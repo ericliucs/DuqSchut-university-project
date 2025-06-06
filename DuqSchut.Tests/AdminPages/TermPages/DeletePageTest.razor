@@ -1,0 +1,171 @@
+@inherits TestContext
+@using DuqSchut.Components.Pages.AdminPages.TermPages
+@using DuqSchut.Models
+@using DuqSchut.Data
+@using Microsoft.EntityFrameworkCore
+
+@code {
+    /**
+    <summary>
+        Test that NavPage contains
+        @attribute [Authorize(Roles = "Admin")]
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(Delete), 
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the Delete Term page when term exists.
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldRenderTermDetailsWhenTermExists()
+    {
+        // Arrange:
+        // The only way this works is if the page inherts TestContext (see the top of the page)
+        DuqSchut.Tests.DBUtils.CreateDB(this);
+        
+        // I pulled this code from Program.cs where the context was created
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>(); 
+        
+        // Create a test term and add it to the database
+        var term = new Term
+        {
+            Name = "Test Term",
+            StartDate = new DateOnly(2003, 1, 9), // my birthday
+            EndDate = new DateOnly(2025, 2, 26), // today
+            TimeIncrement = TermTimeIncrement.Hour,
+            Courses = new List<TermCourse>
+            {
+                new TermCourse { Course = "Course 1" },
+                new TermCourse { Course = "Course 2" }
+            }
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }
+        
+        // I got this code from running VSCode tests and having it yell at me and tell
+        // me to use NavigationManager, then used this example to do the rest
+        // https://bunit.dev/docs/test-doubles/fake-navigation-manager.html
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID", term.ID.ToString());
+        navManager.NavigateTo(uri);
+
+        // render the delete page. Has to go after you navigate to the or else the page will
+        // not render with the term information
+        var deletePage = RenderComponent<Delete>();
+
+        // get all the elements to ensure the data is properly rendered
+        var elements = deletePage.FindAll("dd");
+
+        // Act: verify the term details are rendered correctly
+        var nameElement = elements[0];
+        var startDateElement = elements[1];
+        var endDateElement = elements[2];
+        var timeIncrementElement = elements[3];
+        var deleteButton = elements[4];
+
+        // Assert: verify the contents match our test term
+        Assert.Equal("Test Term", nameElement.TextContent);
+        Assert.Contains("1/9/2003", startDateElement.TextContent);
+        Assert.Contains("2/26/2025", endDateElement.TextContent);
+        Assert.Equal(TermTimeIncrement.Hour.ToString(), timeIncrementElement.TextContent);
+        Assert.False(deleteButton.HasAttribute("disabled"));
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the Delete Term page when term does not exist.
+    </summary>
+    */
+    [Fact]
+    public void ShouldNotRenderWhenNoTerm()
+    {
+        // Arrange: create a fake id that could never exist
+        int fakeID = 1;
+        
+        // you still need to make a context for the delete page to use
+        DuqSchut.Tests.DBUtils.CreateDB(this);
+     
+        // Act: attempt to render the page with the bad id
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID", fakeID.ToString());
+        navManager.NavigateTo(uri);
+
+        var deletePage = RenderComponent<Delete>();
+
+        // get the paragraph element that contains the loading message
+        var loadingMessageComponenet = deletePage.Find("p");
+
+        // Assert: verify the "Loading..." message is rendered
+        Assert.Equal("Loading...", loadingMessageComponenet.TextContent);
+    }
+
+    /**
+    <summary>
+     Testing the delete functionality of the Delete Term page.
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldDeleteTermWhenFormSubmitted()
+    {
+        // Arrange: set up the mock database (same as in the first test) 
+        DuqSchut.Tests.DBUtils.CreateDB(this);
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();  
+        
+        // Create a test term and add it to the database
+        var term = new Term
+        {
+            Name = "Test Term",
+            StartDate = new DateOnly(2003, 1, 9), // my birthday
+            EndDate = new DateOnly(2025, 2, 26), // today
+            TimeIncrement = TermTimeIncrement.Hour,
+            Courses = new List<TermCourse>
+            {
+                new TermCourse { Course = "Course 1" },
+                new TermCourse { Course = "Course 2" }
+            }
+        };
+        
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }
+        
+        // Navigate to the URI with the new term ID
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID", term.ID.ToString());
+        navManager.NavigateTo(uri);
+
+        // Render component after navigation so that is contains term info
+        var deletePage = RenderComponent<Delete>();
+
+        // Act: submit the delete form
+        var submitButton = deletePage.Find("button");
+        await submitButton.ClickAsync(new MouseEventArgs());
+
+        // Assert: Verify the term was deleted. 
+        // You need to create a new context in order to assert this
+        using (var newContext = contextFactory.CreateDbContext())
+        {
+            var deletedTerm = newContext.Terms.Find(term.ID);
+            Assert.Null(deletedTerm);
+        }
+    }
+
+}

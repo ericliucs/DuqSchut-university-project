@@ -1,0 +1,291 @@
+@page "/admin/templates"
+@inject IDbContextFactory<DuqSchutContext> DbFactory
+@inject ILogger<Edit> Logger
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+@using Radzen
+@using Radzen.Blazor
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Edit Email Templates</PageTitle>
+
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css">
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+
+
+<h1>Edit Email Templates</h1>
+<hr />
+
+@if (_isLoading)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="alert alert-info">
+        <strong>Info:</strong> Select a template type to edit the corresponding template.
+    </div>
+
+    <EditForm Model="CurrentTemplate" OnValidSubmit="UpdateTemplate" FormName="edit">
+        <DataAnnotationsValidator />
+        <ValidationSummary role="alert" />
+
+        <input type="hidden" name="Template.ID" value="@CurrentTemplate.ID" />
+
+        <RadzenRow Gap="3rem" class="rz-p-0 rz-p-lg-4">
+            <RadzenColumn Size="12" SizeMD="8">
+                <RadzenFieldset Text="Template Details">
+                    <RadzenStack Gap="3rem">
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="3">
+                                <RadzenLabel Text="Template Type" Component="type" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="9">
+                                <select @onchange="OnTemplateTypeChangedStandard" class="form-control" style="width: 100%;" name="type">
+                                    @foreach (var templateType in TemplateTypesList)
+                                    {
+                                        <option value="@templateType.ToString()" selected="@(templateType == SelectedTemplateType)">@templateType</option>
+                                    }
+                                </select>
+                            </RadzenColumn>
+                        </RadzenRow>
+
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="3">
+                                <RadzenLabel Text="Name" Component="name" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="9">
+                                <RadzenTextBox Style="width: 100%;" Name="name" @bind-Value="CurrentTemplate.Name" />
+                            </RadzenColumn>
+                        </RadzenRow>
+
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="3">
+                                <RadzenLabel Text="Subject" Component="subject" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="9">
+                                <RadzenTextBox Style="width: 100%;" Name="subject" @bind-Value="CurrentTemplate.Subject" />
+                            </RadzenColumn>
+                        </RadzenRow>
+
+                        <RadzenRow AlignItems="AlignItems.Start">
+                            <RadzenColumn Size="12" SizeMD="3">
+                                <RadzenLabel Text="Template Body" Component="body" />
+                                <div class="mt-4">
+                                    <strong>Available Variables:</strong>
+                                    <ul class="mt-2">
+                                        <li><code>{tutor}</code> - Tutor Name</li>
+                                        <li><code>{tutee}</code> - Tutee Name</li>
+                                        <li><code>{date}</code> - Appointment Date</li>
+                                        <li><code>{startTime}</code> - Start Time</li>
+                                        <li><code>{endTime}</code> - End Time</li>
+                                        <li><code>{location}</code> - Location</li>
+                                        <li><code>{course}</code> - Course Name</li>
+                                        <li><code>{purpose}</code> - Purpose of Meeting</li>
+                                    </ul>
+                                </div>
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="9">
+                                <RadzenTextArea Name="body" @bind-Value="CurrentTemplate.Body" Style="width: 100%; height: 300px; font-family: monospace;" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                    </RadzenStack>
+                </RadzenFieldset>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Center" Gap="1rem" class="rz-mt-8 rz-mb-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Size="ButtonSize.Large" Icon="save" Text="Save" />
+            <RadzenButton ButtonType="ButtonType.Button" Size="ButtonSize.Large" Icon="cancel" Text="Back"
+                          Click="@(_ => NavigateToIndex())" ButtonStyle="ButtonStyle.Secondary" />
+        </RadzenStack>
+    </EditForm>
+}
+
+@code {
+    private bool _isLoading = true;
+    private List<TemplateType> TemplateTypesList { get; set; }
+    private TemplateType SelectedTemplateType { get; set; }
+    private EmailTemplate CurrentTemplate { get; set; }
+    private Dictionary<TemplateType, EmailTemplate> TemplatesByType { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            TemplateTypesList = Enum.GetValues(typeof(TemplateType)).Cast<TemplateType>().ToList();
+            await LoadAllTemplates();
+            
+            if (TemplateTypesList.Any())
+            {
+                SelectedTemplateType = TemplateTypesList.First();
+                await LoadTemplateForType(SelectedTemplateType);
+            }
+            
+            _isLoading = false;
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Error initializing template edit page");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    
+    // Most code provided by Claude 3.7, asked it to improve the code and fix any possible bugs. It
+    // came up with the safety checks and default entry. - Eric Liu
+    private async Task LoadAllTemplates()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var templates = await context.EmailTemplates.ToListAsync();
+
+        // Create dictionary of templates by type
+        TemplatesByType = templates.ToDictionary(t => t.Type);
+
+        // Ensure we have one template for each type
+        foreach (var type in TemplateTypesList)
+        {
+            try {
+                if (!TemplatesByType.ContainsKey(type))
+                {
+                    // Create a default template for this type if it doesn't exist
+                    var newTemplate = new EmailTemplate
+                    {
+                        Name = $"{type} Template",
+                        Subject = $"{type} Notification",
+                        Body = $"This is a default template for {type}.\n\nYou can customize this template with variables " +
+                            $"like {{student}}, {{tutor}}, {{date}}, etc.",
+                        Type = type
+                    };
+
+                    context.EmailTemplates.Add(newTemplate);
+                    await context.SaveChangesAsync();
+                    TemplatesByType[type] = newTemplate;
+                }
+            }
+            catch(Exception e) 
+            {
+                Logger.LogError(e, "Error loading templates: ");
+                NavigationManager.NavigateTo("/Error");
+            }
+        }
+    }
+
+    private async Task LoadTemplateForType(TemplateType type)
+    {
+        try {
+            if (TemplatesByType.TryGetValue(type, out var template))
+            {
+                CurrentTemplate = template;
+            }
+            else
+            {
+                // This really shouldn't go wrong as we already create templates for all types but hey
+                await LoadAllTemplates();
+
+                if (TemplatesByType.TryGetValue(type, out template))
+                {
+                    CurrentTemplate = template;
+                }
+                else
+                {
+                    CurrentTemplate = new EmailTemplate
+                    {
+                        Name = $"{type} Template",
+                        Subject = $"{type} Notification",
+                        Body = $"This is a new template for {type}.",
+                        Type = type
+                    };
+                }
+            }
+        }
+        catch(Exception e) 
+        {
+            Logger.LogError(e, $"Error loading template type:{type}");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    
+    private async Task OnTemplateTypeChangedStandard(ChangeEventArgs changeEventArgs)
+    {
+        try {
+            if (changeEventArgs.Value != null && Enum.TryParse<TemplateType>(changeEventArgs.Value.ToString(), out var templateType))
+            {
+                SelectedTemplateType = templateType;
+                await LoadTemplateForType(templateType);
+            }
+        }
+        catch(Exception e) 
+        {
+            Logger.LogError(e, "Error loading changed template: ");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private async Task UpdateTemplate()
+    {
+        try {
+            Logger.LogInformation($"Updating template: {CurrentTemplate.ID} - {CurrentTemplate.Name}");
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            CurrentTemplate.Type = SelectedTemplateType;
+            context.Attach(CurrentTemplate).State = EntityState.Modified;
+            await context.SaveChangesAsync();
+
+            // Update local cache. I kept 
+            TemplatesByType[SelectedTemplateType] = CurrentTemplate;
+            NavigateToIndex();
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Error updating template");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private void NavigateToIndex()
+    {
+        try {
+            NavigationManager.NavigateTo("/admin/NavPage");
+        }
+        catch(Exception e)
+        {
+            Logger.LogError(e, "Error navigating to index page for templates: ");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    // Lifecycle code below entirely provided by Claude 3.7. Radzen initialization errors sometimes happen without it,
+    // particularly when navigating to the site directly through URL. - Eric Liu
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize Radzen JS on first render 
+            try 
+            {
+                await JSRuntime.InvokeVoidAsync("eval", "if (typeof Radzen === 'undefined') { console.log('Loading Radzen JS...'); }");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Error initializing Radzen: {ex.Message}");
+                NavigationManager.NavigateTo("/Error");
+            }
+        }
+    
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    public void Dispose()
+    {
+        // Clean up Radzen resources if needed
+        try
+        {
+            JSRuntime.InvokeVoidAsync("eval", "if (typeof Radzen !== 'undefined') { console.log('Cleaning up Radzen...'); }");
+        }
+        catch (Exception e)
+        {
+            // Don't ignore errors, log all errors using ILOGGER
+            Logger.LogError(e, "Error disposing: ");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

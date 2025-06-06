@@ -1,0 +1,47 @@
+@page "/TutorPages/Appointments/Details"
+@using DuqSchut.Components.Shared.Appointments
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Details> Logger
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Tutor")]
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Appointment</h2>
+    <hr />
+    <SharedDetails appointment="appointment" 
+        ContactRoute="TutorPages/Appointments/contact"
+        ListRoute="/TutorPages/Appointments/Index" />
+</div>
+
+@code {
+    #nullable enable
+    private Appointment? appointment;
+    #nullable disable
+    
+    [SupplyParameterFromQuery]
+    private int ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+            appointment = await context.Appointments.FindAsync(ID);
+
+            if (appointment is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

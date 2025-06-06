@@ -1,0 +1,100 @@
+@inherits TestContext
+
+@using DuqSchut.Components.Pages.LoginPages
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Data
+@using DuqSchut.Models
+@using DuqSchut.Services
+
+@code
+{
+    [Fact]
+    public void PageHasAuthorizeAttribute()
+    {
+        DBUtils.CreateDB(this);
+        var actual = Attribute.GetCustomAttribute(
+        typeof(EntraLogin),
+        typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+    }
+
+    [Theory]
+    [InlineData("Student", "/student/appointments")]
+    [InlineData("Admin", "/admin/NavPage")]
+    [InlineData("Tutor", "/tutor/tutorhome")]
+    [InlineData("UNKNOWN", "/Error")]
+    public void UserInRoleNavigatesToCorrectPath(string role, string path)
+    {
+        DBUtils.CreateDB(this);
+        // Arrange
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetRoles(role);
+
+        // Act
+        var cut = RenderComponent<EntraLogin>();
+
+        // Assert
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.EndsWith(path, navManager.Uri);
+    }
+    [Fact]
+    public void UnauthenticatedUserNavigatesToError()
+    {
+        DBUtils.CreateDB(this);
+        // Arrange
+        var authContext = this.AddTestAuthorization();
+
+        // Act
+        var cut = RenderComponent<EntraLogin>();
+
+        // Assert
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.EndsWith("/Error", navManager.Uri);
+    }
+
+    [Fact]
+    public async Task UnAddedUserGetsAddedWithSpace(){
+        DBUtils.CreateDB(this);
+        
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("Unknown USER");
+        authContext.SetClaims(
+            new Claim("name", "Unknown USER"),
+            new Claim("email", "unknownUser@duq.edu")
+        );
+        authContext.SetRoles("Student");
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        var context = dbFactory.CreateDbContext();
+        var cut = RenderComponent<EntraLogin>();
+        await LoginUtils.AddUserToDatabaseIfNotExistsAsync("unknownUser@duq.edu", "Unknown USER", dbFactory);
+        context.SaveChanges();
+        var user = context.Users.FirstOrDefault(u => u.ID == "unknownUser@duq.edu" && u.FirstName == "Unknown" && u.LastName == "USER");
+
+        Assert.NotNull(user);
+
+    }
+
+    [Fact]
+    public async Task UnAddedUserGetsAddedWithNOSpace(){
+        DBUtils.CreateDB(this);
+        
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("UnknownUSER");
+        authContext.SetClaims(
+            new Claim("name", "UnknownUSER"),
+            new Claim("email", "unknownUser@duq.edu")
+        );
+        authContext.SetRoles("Student");
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        var context = dbFactory.CreateDbContext();
+        var cut = RenderComponent<EntraLogin>();
+        await LoginUtils.AddUserToDatabaseIfNotExistsAsync("unknownUser@duq.edu", "UnknownUSER", dbFactory);
+        context.SaveChanges();
+        var user = context.Users.FirstOrDefault(u => u.ID == "unknownUser@duq.edu" && u.FirstName == "UnknownUSER");
+
+        Assert.NotNull(user);
+
+    }
+}

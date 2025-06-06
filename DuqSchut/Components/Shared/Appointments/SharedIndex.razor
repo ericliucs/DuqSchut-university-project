@@ -1,0 +1,56 @@
+@using DuqSchut.Models
+@using Microsoft.AspNetCore.Components.QuickGrid
+@inject NavigationManager Navigation
+
+<!-- This is code written by others and modified to a shared format 
+  -- It includes ChatGPT helping [Caylah] fix issues,
+  -- such as it suggesting ITem and casting IQueryable and lambdas with @(...) -->
+@if (UserAppointments is null)
+{
+    <p>Loading appointments...</p>
+}
+else if (!UserAppointments.Any())
+{
+    <p>No appointments found.</p>
+}
+else
+{
+    <QuickGrid TItem="Appointment" Class="table" Items="@(UserAppointments.AsQueryable())">
+        <PropertyColumn Property="@(appointment => appointment.TuteeID)" />
+        <PropertyColumn Property="@(appointment => appointment.TutorID)" />
+        <PropertyColumn Property="@(appointment => appointment.Date)" />
+        <PropertyColumn Property="@(appointment => appointment.StartTime)" />
+        <PropertyColumn Property="@(appointment => appointment.EndTime)" />
+        <PropertyColumn Property="@(appointment => appointment.Location)" />
+        <PropertyColumn Property="@(appointment => appointment.Course)" />
+        <PropertyColumn Property="@(appointment => appointment.Purpose)" />
+        <PropertyColumn Property="@(appointment => appointment.TermID)" />
+
+        <TemplateColumn Context="appointment">
+            @if (CanEdit)
+            {
+                <span> 
+                    <a href="@($"/{EditRoute}?id={appointment.ID}")">Edit</a> |
+                </span>
+            }
+                    <a href="@($"/{DetailsRoute}?id={appointment.ID}")">Details</a>
+            @if (CanEdit)
+            {
+                <span> 
+                    | <a href="@($"/{DeleteRoute}?id={appointment.ID}")">Delete</a> 
+                </span>
+            }
+        </TemplateColumn>
+    </QuickGrid>
+}
+
+@code {
+    [Parameter] public IEnumerable<Appointment> UserAppointments { get; set; }
+    [Parameter] public string DetailsRoute { get; set; } = "";
+    [Parameter] public string EditRoute { get; set; } = "";
+    [Parameter] public string DeleteRoute { get; set; } = "";
+    [Parameter] public bool CanEdit { get; set; } = false;
+
+    private void Edit(int id) => Navigation.NavigateTo($"/appointments/edit/{id}");
+    private void Delete(int id) => Navigation.NavigateTo($"/appointments/delete/{id}");
+}

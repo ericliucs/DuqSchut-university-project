@@ -1,0 +1,168 @@
+@using DuqSchut.Components.Pages.AdminPages
+
+@inherits TestContext
+
+@code
+{
+  // The following test is based on https://github.com/bUnit-dev/bUnit/discussions/448.
+  /**
+   <summary>
+    Test that NavPage contains
+    @attribute [Authorize(Roles = "Admin")]
+   </summary>
+  */
+  [Fact]
+  public void OnlyAdminIsAuthorized() 
+  {
+      var actual = Attribute.GetCustomAttribute(
+        typeof(NavPage), 
+        typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+      Assert.NotNull(actual);
+      Assert.Equal("Admin", actual.Roles);
+  }
+
+    [Fact]
+  /**
+   <summary>
+    This tests to see if the navigations buttons exist.
+
+    Parts of this code were written with the assistance of ChatGPT, however
+    I adopted it for my own use, as it does not have access to the pages like I do 
+    The inital promt I used (from which I further revised): 
+    "I want you to help me make tests in a .razor format for a 
+    navigation page. Give me examples of what I should test for and 
+    show me how to implement the code."
+   </summary>
+  */
+      /** vvvv The actual buttons present currently vvvv
+        <button class="btn btn-primary" @onclick="Semesters">Semesters</button>
+        <button class="btn btn-primary" @onclick="TutorProfiles">Tutor Profiles</button>
+        <button class="btn btn-primary" @onclick="UserRoles">User Roles</button> 
+        */
+  public void NavPage_Buttons_Exists()
+  {
+    // Arrange
+    this.AddTestAuthorization().SetAuthorizing(); // needed b/c page has <AuthorizeView>
+    var cut = RenderComponent<NavPage>();
+
+    var buttons = cut.FindAll("button.btn-primary");
+
+    // Assert that all buttons are present
+    Assert.Equal(7, buttons.Count);
+    Assert.Contains(buttons, btn => btn.TextContent.Trim() == "Semesters");
+    Assert.Contains(buttons, btn => btn.TextContent.Trim() == "Tutor Profiles");
+    Assert.Contains(buttons, btn => btn.TextContent.Trim() == "User Roles");
+    Assert.Contains(buttons, btn => btn.TextContent.Trim() == "Reports");
+  }
+    
+    [Fact]
+  /**
+   <summary>
+    This tests to see that the NavPage links 
+   </summary>
+  */
+    public void SemestersButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing();
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[0].Click(); // Click Semesters button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/terms" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void TutorProfilesButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing();
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[1].Click(); // Click Tutor Profiles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/tutor/profile/" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void UserRolesButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); 
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[2].Click(); // Click User Roles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/users" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void TemplateButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); 
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[3].Click(); // Click User Roles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/templates" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void AppointmentsButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); 
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[4].Click(); // Click User Roles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/appointments" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void ReportButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); 
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[5].Click(); // Click User Roles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/reports/create" , mockNavManager.Uri);
+    }
+
+    [Fact]
+    public void StudentProflieButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); 
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<NavPage>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[6].Click(); // Click User Roles button
+
+        // Assert - needs to be changed
+        Assert.EndsWith("/admin/students" , mockNavManager.Uri);
+    }
+
+}

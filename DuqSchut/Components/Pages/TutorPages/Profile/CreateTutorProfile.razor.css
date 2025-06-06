@@ -1,0 +1,122 @@
+body {
+    background-color: white;
+    font-family: Helvetica, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    background-color: rgb(1, 33, 105);
+    color: white;
+    text-align: center;
+    padding: 15px 27px;
+    height: 113px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 0 32px 32px;
+    font-size: 2rem;
+    z-index: 10;
+}
+
+.form-layout {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px;
+}
+
+.form-left {
+    flex: 1;
+    min-width: 250px;
+    max-width: 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.form-calendar {
+    flex: 3;
+    min-width: 400px;
+    background-color: rgb(186, 12, 47);
+    color: white;
+    padding: 16px;
+    border-radius: 15px;
+    overflow-x: auto;
+}
+
+.aboutme {
+    margin: 0 24px 24px 24px;
+    padding: 16px;
+    background-color: rgb(186, 12, 47);
+    color: white;
+    border-radius: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#selectedCourses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+button {
+    background-color: rgb(1, 33, 105);
+    color: white;
+    border-radius: 12px;
+    font-size: 1rem;
+    padding: 8px 16px;
+    border: none;
+    cursor: pointer;
+    margin-top: 12px;
+}
+
+button:hover {
+    background-color: rgb(186, 12, 47);
+}
+
+button:active {
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.custom-validation-message {
+    color: white;
+}
+
+.error {
+    color: red;
+    margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+    .form-layout {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-calendar {
+        width: 100%;
+    }
+
+    .form-left {
+        width: 100%;
+    }
+
+    .aboutme {
+        margin: 0 12px 24px 12px;
+    }
+}
+
+.button-group {
+    display: flex;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 24px;
+    margin-top: 24px;
+}

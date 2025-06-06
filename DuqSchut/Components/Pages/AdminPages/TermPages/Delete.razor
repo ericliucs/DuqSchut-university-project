@@ -1,0 +1,105 @@
+@page "/admin/terms/delete"
+
+@using DuqSchut.Components.Shared.TermPages
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<Delete> Logger
+@inject NavigationManager NavigationManager
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Delete Term</PageTitle>
+
+<h1>Delete Term</h1>
+
+@if (term is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card p-4 shadow-sm">
+        <h2 class="mb-3">Term Information</h2>
+        <hr />
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">Name</dt>
+            <dd class="col-sm-8">@term.Name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">StartDate</dt>
+            <dd class="col-sm-8">@term.StartDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">EndDate</dt>
+            <dd class="col-sm-8">@term.EndDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">TimeIncrement</dt>
+            <dd class="col-sm-8">@term.TimeIncrement</dd>
+        </dl>
+        @* <dl class="row">
+            <dt class="col-sm-2">MaxHoursTuteesAllowed</dt>
+            <dd class="col-sm-10">@term.MaxHoursTuteesAllowed</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MinTutorWeeklyHours</dt>
+            <dd class="col-sm-10">@term.MinTutorWeeklyHours</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MaxTutorWeeklyHours</dt>
+            <dd class="col-sm-10">@term.MaxTutorWeeklyHours</dd>
+        </dl> *@
+        <dt class="col-sm-4 font-weight-bold">Courses</dt>
+        <dd class="col-sm-8"><DisplayCourses CurrentTerm="term"></DisplayCourses></dd>
+        
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">Published</dt>
+            <dd class="col-sm-8">@(term.Published ? "Yes" : "No")</dd>
+        </dl>
+
+        <EditForm method="post" Model="term" OnValidSubmit="DeleteTerm" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(term is null)">Delete</button> |
+            <a class="btn btn-secondary" href="/admin/terms">Back to List</a>
+        </EditForm>
+    </div>
+}
+
+
+@code {
+    #nullable enable
+    private Term? term;
+    #nullable disable
+
+    [SupplyParameterFromQuery]
+    public int ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            using var context = DbFactory.CreateDbContext();
+            term = await context.Terms.Include(t => t.Courses).FirstOrDefaultAsync(m => m.ID == ID);
+
+            if (term is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+
+    private async Task DeleteTerm()
+    {
+        try {
+            using var context = DbFactory.CreateDbContext();
+            context.Terms.Remove(term!);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/admin/terms", forceLoad:true);
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

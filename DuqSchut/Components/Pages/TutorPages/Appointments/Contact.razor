@@ -1,0 +1,83 @@
+@page "/TutorPages/Appointments/Contact"
+@using DuqSchut.Services
+@inject ILogger<Contact> Logger
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Tutor, Admin")]
+
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject IEmailDependency Email
+
+<PageTitle>Contact TuteeD</PageTitle>
+<h2>Message to @appointment.TuteeID</h2>
+<p>Subject</p>
+<InputText @bind-Value="subject" style="width: 100%; max-width: 500px; padding: 8px; font-size: 16px;"></InputText>
+<br><br>
+<p>Body</p>
+<InputTextArea @bind-Value="body" style="width: 100%; max-width: 600px; height: 300px; padding: 8px; font-size: 16px;"/>
+<br><br>
+<button class="btn btn-primary" @onclick="SendEmail">Send</button>
+
+@code {
+    private string subject = string.Empty;
+    private string body = string.Empty;
+    private string address = string.Empty;
+    #nullable enable
+    private Appointment? appointment;
+    #nullable disable
+    
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState{get; set;}
+    #nullable disable
+
+    [SupplyParameterFromQuery]
+    private int ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+            appointment = await context.Appointments.FindAsync(ID);
+            address = appointment.TuteeID;
+
+
+            if (appointment is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private async Task SendEmail() {
+        try{
+            bool sent = await Email.SendEmailAsync(address, subject, body);
+            if(sent){
+                var authState = await authenticationState;
+                ClaimsPrincipal user = authState?.User;
+                
+                if(user.IsInRole("Admin")){
+                    NavigationManager.NavigateTo("/admin/appointments");
+                }
+                else{
+                    NavigationManager.NavigateTo("/TutorPages/Appointments/Index");
+                }
+            }
+            else{
+                Logger.LogError("Email to {address} failed", address);
+                NavigationManager.NavigateTo("/Error");
+            }
+            
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+}

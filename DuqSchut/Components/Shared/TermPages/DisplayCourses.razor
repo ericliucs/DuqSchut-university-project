@@ -1,0 +1,31 @@
+@using DuqSchut.Models
+
+@if (CurrentTerm.Courses.Count > 0)
+{
+    <!-- The Styling for this came from ChatGPT, however, the structure of the html came from me (Lucas Mitchell) -->
+    <div style="height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; background-color: #fff; width: 100%; max-width: 400px;">
+        <ul style="list-style-type: none; padding: 0; margin: 0;">
+            @foreach (var course in CurrentTerm.Courses)
+            {
+                <li style="padding: 10px; border-bottom: 1px solid #eee; font-size: 16px;">
+                    <span>@course.Course</span>
+                </li>
+            }
+        </ul>
+    </div>
+}
+else 
+{
+    <p> <b>No Courses Yet!</b> </p>
+}
+
+@code 
+{
+    /**
+     <summary>
+      The current term to display a list of courses for.
+     </summary>
+    */
+    [Parameter] public Term CurrentTerm { get; set; }
+
+}

@@ -1,0 +1,113 @@
+@page "/admin/terms/create"
+
+@using DuqSchut.Components.Shared.TermPages
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<Create> Logger
+@inject NavigationManager NavigationManager
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Create Term</PageTitle>
+
+<h1>Create Term</h1>
+
+<h2>Term</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="Term" OnValidSubmit="AddTerm" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="TermNameClass">
+                <label for="name" class="form-label">Name:</label> 
+                <InputText id="name" @bind-Value="Term.Name" class="form-control" /> 
+                <ValidationMessage For="() => Term.Name" class="text-danger" /> 
+            </div>        
+            <div class="TermStartDateClass">
+                <label for="startdate" class="form-label">Start Date:</label> 
+                <InputDate id="startdate" @bind-Value="Term.StartDate" class="form-control" /> 
+                <ValidationMessage For="() => Term.StartDate" class="text-danger" /> 
+            </div>        
+            <div class="TermEndDateClass">
+                <label for="enddate" class="form-label">End Date:</label> 
+                <InputDate id="enddate" @bind-Value="Term.EndDate" class="form-control" /> 
+                <ValidationMessage For="() => Term.EndDate" class="text-danger" /> 
+            </div>
+            <div class="TermTimeIncrementClass">
+                <label for="timeincrement" class="form-label">TimeIncrement:</label>
+                <InputSelect id="timeincrement" @bind-Value="Term.TimeIncrement" class="form-control">
+                    <option value="">-- Select Time Increment --</option>
+                    @foreach (var increment in Enum.GetValues(typeof(TermTimeIncrement))) // Replace TimeIncrementEnum
+                    {
+                        <option value="@increment">@increment</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => Term.TimeIncrement" class="text-danger" />
+            </div>
+            @* <div class="MaxHoursTuteeClass">
+                <label for="maxhourstuteesallowed" class="form-label">MaxHoursTuteesAllowed:</label> 
+                <InputNumber id="maxhourstuteesallowed" @bind-Value="Term.MaxHoursTuteesAllowed" class="form-control" /> 
+                <ValidationMessage For="() => Term.MaxHoursTuteesAllowed" class="text-danger" /> 
+            </div>        
+            <div class="MinHoursTutorClass">
+                <label for="mintutorweeklyhours" class="form-label">MinTutorWeeklyHours:</label> 
+                <InputNumber id="mintutorweeklyhours" @bind-Value="Term.MinTutorWeeklyHours" class="form-control" /> 
+                <ValidationMessage For="() => Term.MinTutorWeeklyHours" class="text-danger" /> 
+            </div>        
+            <div class="MaxHoursTutorClass">
+                <label for="maxtutorweeklyhours" class="form-label">MaxTutorWeeklyHours:</label> 
+                <InputNumber id="maxtutorweeklyhours" @bind-Value="Term.MaxTutorWeeklyHours" class="form-control" /> 
+                <ValidationMessage For="() => Term.MaxTutorWeeklyHours" class="text-danger" /> 
+            </div>         *@
+            <br />
+            <div class="mb-3">
+                <CourseInput @ref=courseInputRef CurrentCourses="@Term.Courses"></CourseInput>
+            </div> 
+            <div class="TermPublishedClass">
+                <label for="published" class="form-label">Published:</label> 
+                <InputCheckbox id="published" @bind-Value="Term.Published" class="form-check-input" /> 
+                <ValidationMessage For="() => Term.Published" class="text-danger" /> 
+            </div>       
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+
+    </div>
+</div>
+
+<div class="backbutton">
+    <a href="/admin/terms">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    public Term Term { get; set; } = new();
+    private CourseInput courseInputRef;
+
+    private async Task AddTerm()
+    {
+        try {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            
+            List<TermCourse> CoursesToAdd = new();
+
+            foreach (var course in courseInputRef.Courses) 
+            {
+                CoursesToAdd.Add(new TermCourse { Course = course });
+            }
+
+            if (CoursesToAdd.Count > 0)
+            {
+                Term.Courses = CoursesToAdd;
+            }
+            
+            // commit term to database and navigate to the terms index page
+            context.Terms.Add(Term);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/admin/terms");
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

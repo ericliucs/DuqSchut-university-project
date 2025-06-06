@@ -1,0 +1,192 @@
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Models
+@using NuGet.Protocol
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+
+<!-- I turned this into a component becuase the edit page will also need to display something like this -->
+
+<textarea @bind="InputCourses" rows="5" cols="50" placeholder="Type or paste course names here (one per line)"></textarea>
+<br />
+<button @onclick="ParseInputtedCourses" type="button" class="btn btn-primary mt-2">Add Courses</button>
+
+@if (Courses.Count > 0)
+{
+    <button @onclick="() => Courses.Clear()" type="button" class="btn btn-danger mt-2">Clear Courses</button>
+}
+
+<br />
+
+<!-- Keep this commented out until parsing an excel file is implemented -->
+@* <InputFile accept=".xlsx" multiple="false"></InputFile> *@
+
+
+<!-- Create a table of the courses entered so that if is easily editable once entered -->
+@if (Courses.Count > 0)
+{
+    <div style="height: 200px; overflow-y: scroll;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Course</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- This .Select statement transforms the Courses list into something similar to a list of structs/objects containing {name, index} -->
+                <!-- This has to be done to keep track of the index of the course for removeal and editng -->
+                <!-- I found this stackoverflow: https://stackoverflow.com/questions/521687/foreach-with-index -->
+                @foreach (var course in Courses.Select((value, index) => new { value, index }).ToList())
+                {
+                    <tr @key="course.index">
+                        <td>@(course.index + 1)</td>
+                        <td>
+                            <input type="text" value="@course.value" @onchange="(e) => UpdateCourse(e, course.index)" class="form-control" />
+                        </td>
+                        <td>
+                            <button @onclick="() => RemoveCourse(course.index)" type="button"
+                                class="btn btn-danger">Remove</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else 
+{
+    <p> <b>No Courses Yet!</b> </p>
+}
+
+
+@code {
+
+    [Parameter] public ICollection<TermCourse> CurrentCourses { get; set; }
+
+    private string InputCourses { get; set; } = "";
+    public List<string> Courses { get; set; } = new();
+
+    protected override void OnInitialized() 
+    {
+        try {
+            if (CurrentCourses != null && CurrentCourses.Count() > 0) 
+            {
+                foreach(var course in CurrentCourses) 
+                {
+                    Courses.Add(course.Course);
+                }
+            }
+            StateHasChanged();
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /**
+     <summary>
+      Reads the the string stored in the textarea where the user inputs a list of courses
+      separated by "\n"'s. Each individual course is added to the Courses list. The textarea
+      is then cleared (reset to be "") and the list of Courses is sent to the function 
+      passed in as a parameter (located in whatever page declares the component).
+     </summary>
+    */
+    private void ParseInputtedCourses()
+    { 
+        try {
+            var lines = InputCourses.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                InputCourses = line.Trim();
+                AddSingleCourse();
+            }
+            InputCourses = "";
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+
+    /**
+     <summary>
+      Adds a single course to the list of TermCourses, clears the input field, then notifies a state change. 
+     </summary>
+    */
+    private void AddSingleCourse()
+    {
+        try {
+            if (!string.IsNullOrWhiteSpace(InputCourses) && !Courses.Contains(InputCourses))
+            {
+                Courses.Add(InputCourses);
+                InputCourses = "";
+            }
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /**
+     <summary>
+      Removes the course from the Courses list at the specified index
+     </summary>
+     <param name="index">index of the course to remove</param>
+    */
+    private void RemoveCourse(int index)
+    {
+        try {
+            // Remove the course at the desired location
+            if (index >= 0 && index < Courses.Count)
+            {
+                Courses.RemoveAt(index);
+            }
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /**
+     <summary>
+      Manually updates the name of the course and notifies the parent page
+     </summary>
+     <param name="e">Event causing the change (typing to change the name)</param>
+     <param name="index">index of the course to remove</param>
+    */
+    private void UpdateCourse(ChangeEventArgs e, int index)
+    {
+        try {
+            if (index >= 0 && index < Courses.Count)
+            {
+                Courses[index] = e.Value?.ToString();
+            }
+        } catch (Exception exception) {
+            Console.WriteLine(exception.StackTrace);
+        }
+    }
+
+    /**
+     <summary>
+      Accepts and reads an excel file, searching for course ids and names.
+      The ids and names are added to a string separated by "\n" allowing for ParseInputtedCourses
+      to parse and apply the courses found in the file. This method and the libaray were found here:
+      https://stackoverflow.com/questions/75058187/how-to-upload-and-read-an-excel-file-xlsx-in-a-blazor-server-project
+     </summary>
+     <param name="e">The excel file to be read from</param>
+    */
+    @* private void ParseFile(InputFileChangeEventArgs e)
+    {
+        // the compoenent only accepts one file, to accept multiple, update the
+        // compoenent and use the .GetMultipleFiles method
+        var File = e.File;
+        if (File is null) { return; }
+
+        // for the rest of this function, write code to parse an excel file, then put the course names
+        // into a string separate my \n's. Then call the ParseInputtedCourses function, whichi will parse them,
+        // display them in the list, then give them to whatever page needs them
+    } *@
+}

@@ -1,0 +1,143 @@
+@page "/OriginalLogin"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using DuqSchut.Services
+
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+
+@inject NavigationManager NavigationManager
+@using Microsoft.EntityFrameworkCore
+@inject IJSRuntime JS
+
+@using DuqSchut.Models
+@using Microsoft.Extensions.Logging
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+
+<PageTitle>DuqSchut Login</PageTitle>
+
+<h1>Sign into DuqSchut</h1>
+<label for="username">Multipass Username:</label>
+<input type="text" class="username" @bind="multiPassEmail">
+<br><br>
+<label for="firstname" class="firstnamelabel">Name:</label>
+<input type="text" class="firstname" @bind="name">
+<br><br>
+<button id="login-button" class="login-button" @onclick="SignIn">Login</button>
+
+@code {
+    private string multiPassEmail = string.Empty;
+    private string firstname = string.Empty;
+    private string lastname = string.Empty;
+    private string errorMessage = string.Empty;
+
+    private string name = string.Empty;
+
+    //Used Generative AI to help me create an alert if no user is found -> Holden Eagle 2/23/2025
+    //Used Generative AI to help me split the name
+     private void SignIn()
+    {
+        try{
+
+        // Perform authentication logic here
+        var role = "Student";
+        if (AdminExists(firstname , lastname , multiPassEmail))
+        {
+            role = "Admin";
+        }
+        else if (TutorExists(firstname , lastname , multiPassEmail))
+        {
+            role = "Tutor";
+        }
+        // Create a principal and set it as the authentication state
+        // by calling the SetUser() method suggested by Copilot.
+        var claims = new[]
+        {
+            new Claim("email", multiPassEmail),
+            new Claim("name", name),
+            new Claim(ClaimTypes.Role, role)
+        };
+        var identity = new ClaimsIdentity(
+            claims, 
+            CookieAuthenticationDefaults.AuthenticationScheme);
+        var user = new ClaimsPrincipal(identity);
+        /* Does not work...
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme, 
+            user);
+        */
+        // Redirect to the appropriate page
+        if(role.Equals("Admin")){
+            NavigationManager.NavigateTo("/admin/NavPage");
+        }
+        else if(role.Equals("Tutor")){
+            NavigationManager.NavigateTo("/tutor/tutorhome");
+        }
+        else{
+            NavigationManager.NavigateTo("/student/appointments");
+        }
+        }
+        catch (Exception e) {
+            System.Console.WriteLine(e.StackTrace);
+        }
+    }
+    /*
+        var identity = new ClaimsIdentity(
+            [
+                new Claim("name", name),
+                new Claim("email", multiPassEmail),
+                new Claim(ClaimTypes.Role, "Administrator")
+            ],
+            CustomAuthenticationHandler.SchemeName);
+
+
+        var newUser = new ClaimsPrincipal(identity);
+
+        AuthService.CurrentUser = newUser;
+        Console.WriteLine("New user # claims: " + newUser.Claims.Count());
+        using var context = DbFactory.CreateDbContext();
+
+        int index = name.IndexOf(' ');
+        if(index == -1){
+            await JS.InvokeVoidAsync("alert", "User not found. Please try again.");
+            //multiPassEmail = string.Empty;
+            //firstname = string.Empty;
+            //StateHasChanged();
+            return;
+        }
+        firstname = name.Substring(0, index);
+        lastname = name.Substring(index + 1);
+
+        if(AdminExists(firstname , lastname , multiPassEmail)){
+            NavigationManager.NavigateTo("/NavPage");
+        }
+        else if(TutorExists(firstname , lastname , multiPassEmail)){
+            NavigationManager.NavigateTo("/TutorPages/UpcomingAppointments");
+        }
+        else{
+            //await JS.InvokeVoidAsync("alert", "User not found. Please try again. " + multiPassEmail + " " + firstname + " " + lastname);
+            //multiPassEmail = string.Empty;
+            //firstname = string.Empty;
+            //StateHasChanged();
+            NavigationManager.NavigateTo("/StudentHome");
+            return;
+        }
+
+    */
+    private bool AdminExists(string firstname , string lastname , string multiPassEmail)
+    {
+        using var context = DbFactory.CreateDbContext();
+        Console.WriteLine(multiPassEmail);
+        return context.Users.Any(e => e.Role == UserRole.Admin && e.ID == multiPassEmail);
+    }
+    private bool TutorExists(string firstname , string lastname , string multiPassEmail)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Users.Any(e => e.Role == UserRole.Tutor && e.ID == multiPassEmail);
+    }
+    private bool UserExists(string firstname , string lastname , string multiPassEmail)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Users.Any(e => e.ID == multiPassEmail);
+    }
+}

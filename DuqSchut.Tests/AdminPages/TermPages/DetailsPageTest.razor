@@ -1,0 +1,115 @@
+@inherits TestContext
+@inject NavigationManager NavigationManager
+@using DuqSchut.Components.Pages.AdminPages.TermPages
+@using DuqSchut.Models
+@using DuqSchut.Data
+@using Microsoft.EntityFrameworkCore
+
+@code {
+    /**
+    <summary>
+        Test that NavPage contains
+        @attribute [Authorize(Roles = "Admin")]
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(Details), 
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the Term Details page when the term exists.
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldRenderTermDetailsWhenTermExists()
+    {
+        // Arrange:
+        DuqSchut.Tests.DBUtils.CreateDB(this);
+        
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();  
+
+        // Create a test term and add it to the database
+        var term = new Term
+        {
+            Name = "Test Term",
+            StartDate = new DateOnly(2003, 1, 9), // example date
+            EndDate = new DateOnly(2025, 2, 26), // example date
+            TimeIncrement = TermTimeIncrement.Hour,
+            Courses = new List<TermCourse>
+            {
+                new TermCourse { Course = "Course 1" },
+                new TermCourse { Course = "Course 2" }
+            },
+            Published = true
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }
+
+        // Navigate to the details page with the new term ID
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID", term.ID.ToString());
+        navManager.NavigateTo(uri);
+
+        // Render the term details page
+        var detailsPage = RenderComponent<Details>();
+
+        // Get all the elements to ensure the data is rendered correctly
+        var elements = detailsPage.FindAll("dd");
+
+        // Act: verify the term details are rendered correctly
+        var nameElement = elements[0];
+        var startDateElement = elements[1];
+        var endDateElement = elements[2];
+        var timeIncrementElement = elements[3];
+        var coursesElement = elements[4];
+        var publishedElement = elements[5];
+
+        // Assert: verify the contents match our test term
+        Assert.Equal("Test Term", nameElement.TextContent);
+        Assert.Contains("1/9/2003", startDateElement.TextContent);
+        Assert.Contains("2/26/2025", endDateElement.TextContent);
+        Assert.Equal(TermTimeIncrement.Hour.ToString(), timeIncrementElement.TextContent);
+        Assert.Contains("Course 1", coursesElement.TextContent);
+        Assert.Contains("Course 2", coursesElement.TextContent);
+        Assert.Equal("Yes", publishedElement.TextContent);
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the Term Details page when no term exists.
+    </summary>
+    */
+    [Fact]
+    public void ShouldNotRenderWhenNoTerm()
+    {
+        // Arrange: create a fake id that could never exist
+        int fakeID = 9999;
+
+        DuqSchut.Tests.DBUtils.CreateDB(this);
+
+        // Act: attempt to render the page with the bad id
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID", fakeID.ToString());
+        navManager.NavigateTo(uri);
+
+        var detailsPage = RenderComponent<Details>();
+
+        // Get the paragraph element that contains the loading message
+        var loadingMessageComponent = detailsPage.Find("p");
+
+        // Assert: verify the "Loading..." message is rendered
+        Assert.Equal("Loading...", loadingMessageComponent.TextContent);
+    }
+}

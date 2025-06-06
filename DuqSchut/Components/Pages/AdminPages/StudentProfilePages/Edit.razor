@@ -1,0 +1,105 @@
+@page "/admin/students/edit"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Edit> Logger
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>Student Profile</h2>
+<hr />
+@if (StudentProfile is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="StudentProfile" OnValidSubmit="UpdateStudent" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="StudentProfile.ID" value="@StudentProfile.ID" />
+
+                <div class="mb-3">
+                    <label for="firstname" class="form-label">First Name:</label>
+                    <InputText id="firstname" @bind-Value="StudentProfile.User.FirstName" class="form-control" Disabled />
+                </div>
+
+                <div class="mb-3">
+                    <label for="lastname" class="form-label">Last Name:</label>
+                    <InputText id="lastname" @bind-Value="StudentProfile.User.LastName" class="form-control" Disabled />
+                </div>
+
+
+                <div class="mb-3">
+                    <label for="hours" class="form-label">Tutoring Hours Remaining:</label>
+                    <InputNumber id="hours" @bind-Value="StudentProfile.HoursRemaining" class="form-control" step="0.5" />
+                    <ValidationMessage For="() => StudentProfile.HoursRemaining" class="text-danger" />
+                </div>
+
+                <button type="submit" class="btn btn-primary mt-2">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/admin/students">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int ID { get; set; }
+
+    private StudentProfile StudentProfile { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        StudentProfile = await context.StudentProfile
+            .Include(sp => sp.User)
+            .FirstOrDefaultAsync(m => m.ID == ID);
+
+        if (StudentProfile is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task UpdateStudent()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.StudentProfile.Update(StudentProfile);
+        context.Entry(StudentProfile).Property(sp => sp.HoursRemaining).IsModified = true;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!StudentExists(StudentProfile!.ID))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/admin/students");
+    }
+
+    private bool StudentExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.StudentProfile.Any(e => e.ID == id);
+    }
+}

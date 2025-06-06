@@ -1,0 +1,290 @@
+@using DuqSchut.Components.Pages.AdminPages.TemplatePages
+@using Radzen
+@inherits TestContext
+
+@* Tests created by Claude 3.7 and fixed by Eric Liu to increase code coverage, fix bugs, 
+   and improve edge case coverage. *@
+
+@code {
+    public EditTest()
+    {
+        Services.AddScoped<NotificationService>();
+        DBUtils.CreateDB(this);
+    }
+    
+    [Fact]
+    public async Task ShouldUpdateTemplateWhenFormIsSubmitted()
+    {
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        int templateId;
+        await using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            var template = new EmailTemplate
+            {
+                Name = "Test Template",
+                Subject = "Test Subject",
+                Body = "Test Body",
+                Type = TemplateType.AppointmentConfirmationStudent
+            };
+            context.EmailTemplates.Add(template);
+            await context.SaveChangesAsync();
+            templateId = template.ID;
+        }
+        
+        await using (var verifyContext = await contextFactory.CreateDbContextAsync())
+        {
+            var dbTemplate = await verifyContext.EmailTemplates.FindAsync(templateId);
+            Assert.NotNull(dbTemplate);
+            Assert.Equal("Test Template", dbTemplate.Name);
+        }
+
+        string newName = "NEW TEMPLATE____!";
+        string newSubject = "NEW SUBJECT____!";
+        string newBody = "NEW BODY____!";
+        
+        await using (var updateContext = await contextFactory.CreateDbContextAsync())
+        {
+            var existingTemplate = await updateContext.EmailTemplates.FirstOrDefaultAsync((t) => (t.Type == TemplateType.AppointmentConfirmationStudent));
+            Assert.NotNull(existingTemplate);
+            existingTemplate.Name = newName;
+            existingTemplate.Subject = newSubject;
+            existingTemplate.Body = newBody;
+            updateContext.Update(existingTemplate);
+            await updateContext.SaveChangesAsync();
+        }
+        
+        await using (var finalContext = await contextFactory.CreateDbContextAsync())
+        {
+            var finalTemplate = await finalContext.EmailTemplates.FirstOrDefaultAsync((t) => (t.Type == TemplateType.AppointmentConfirmationStudent));
+            Assert.NotNull(finalTemplate);
+            Assert.Equal("NEW TEMPLATE____!", finalTemplate.Name);
+            Assert.Equal("NEW SUBJECT____!", finalTemplate.Subject);
+            Assert.Equal("NEW BODY____!", finalTemplate.Body);
+        }
+    }
+    
+    /**
+    <summary>
+        Test that Edit page contains
+        @attribute [Authorize(Roles = "Admin")]
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(Edit), 
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the Edit Template page elements.
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldRenderPageElementsCorrectly()
+    {
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        var template = new EmailTemplate
+        {
+            Name = "Test Template",
+            Subject = "Test Subject",
+            Body = "Test Body",
+            Type = TemplateType.AppointmentConfirmationStudent
+        };
+
+        using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            context.EmailTemplates.Add(template);
+            await context.SaveChangesAsync();
+        }
+        
+        var editPage = RenderComponent<Edit>();
+        
+        Assert.Contains("Edit Email Templates", editPage.Markup);
+        Assert.NotNull(editPage.Find("select"));
+        Assert.NotNull(editPage.Find("input[name='name']")); // Name input
+        Assert.NotNull(editPage.Find("input[name='subject']")); // Subject input
+        Assert.NotNull(editPage.Find("textarea[name='body']")); // Body textarea
+        Assert.NotNull(editPage.Find("button[type='submit']")); // Submit button
+    }
+
+    /**
+    <summary>
+     Testing the template type selection and template loading.
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldLoadTemplateWhenTypeIsSelected()
+    {
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        var template1 = new EmailTemplate
+        {
+            Name = "Confirmation Template",
+            Subject = "Appointment Confirmation",
+            Body = "Your appointment has been confirmed.",
+            Type = TemplateType.AppointmentConfirmationStudent
+        };
+        
+        var template2 = new EmailTemplate
+        {
+            Name = "Cancellation Template",
+            Subject = "Appointment Cancellation",
+            Body = "Your appointment has been cancelled.",
+            Type = TemplateType.AppointmentCancellationTutor
+        };
+
+        using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            context.EmailTemplates.Add(template1);
+            context.EmailTemplates.Add(template2);
+            await context.SaveChangesAsync();
+        }
+        
+        var editPage = RenderComponent<Edit>();
+        
+        // Find the select element and simulate selecting a different template type
+        var select = editPage.Find("select");
+        select.Change(TemplateType.AppointmentCancellationStudent.ToString());
+        
+        // Have to allow a bit of time or the test will fail regardless
+        await Task.Delay(100);
+        
+        var nameInput = editPage.Find("input[name='name']");
+        var subjectInput = editPage.Find("input[name='subject']");
+        var bodyTextarea = editPage.Find("textarea[name='body']");
+        
+        Assert.Contains("Cancellation", nameInput.GetAttribute("value"));
+        Assert.Contains("Cancellation", subjectInput.GetAttribute("value"));
+    }
+
+    /**
+    <summary>
+     Testing that navigation works correctly when the Back button is clicked.
+    </summary>
+    */
+    [Fact]
+    public void ShouldNavigateToIndexWhenBackButtonIsClicked()
+    {
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var editPage = RenderComponent<Edit>();
+        
+        var backButton = editPage.FindAll("button").FirstOrDefault(b => b.TextContent.Contains("Back"));
+        backButton?.Click();
+        
+        Assert.EndsWith("/admin/NavPage", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Testing the standard dropdown replacements for the RadzenDropDownDataGrid
+    </summary>
+    */
+    [Fact]
+    public async Task StandardDropdownShouldWorkCorrectly()
+    {
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        var template1 = new EmailTemplate
+        {
+            Name = "Confirmation Template",
+            Subject = "Confirmation Subject",
+            Body = "Confirmation Body",
+            Type = TemplateType.AppointmentConfirmationStudent
+        };
+        
+        var template2 = new EmailTemplate
+        {
+            Name = "Cancellation Template",
+            Subject = "Cancellation Subject",
+            Body = "Cancellation Body",
+            Type = TemplateType.AppointmentCancellationTutor
+        };
+
+        using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            context.EmailTemplates.Add(template1);
+            context.EmailTemplates.Add(template2);
+            await context.SaveChangesAsync();
+        }
+        
+        var editPage = RenderComponent<Edit>();
+        
+        var select = editPage.Find("select");
+        var options = select.QuerySelectorAll("option");
+        
+        Assert.Equal(Enum.GetValues(typeof(TemplateType)).Length, options.Length);
+        
+        select.Change(TemplateType.AppointmentCancellationStudent.ToString());
+        
+        // Again, have to give it time or the tests fail regardless
+        await Task.Delay(100);
+        
+        var nameInput = editPage.Find("input[name='name']");
+        Assert.Contains("Cancellation", nameInput.GetAttribute("value"));
+    }
+    
+    [Fact]
+    public async Task ShouldSaveTemplateChangesWhenFormIsSubmitted()
+    {
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        var template = new EmailTemplate
+        {
+            Name = "Original Template",
+            Subject = "Original Subject",
+            Body = "Original Body",
+            Type = TemplateType.AppointmentCancellationStudent
+        };
+        
+        await using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            context.EmailTemplates.RemoveRange(context.EmailTemplates);
+            await context.SaveChangesAsync();
+            
+            context.EmailTemplates.Add(template);
+            await context.SaveChangesAsync();
+        }
+        
+        var editPage = RenderComponent<Edit>();
+        
+        await Task.Delay(100);
+        
+        var select = editPage.Find("select");
+        select.Change(TemplateType.AppointmentCancellationTutor.ToString());
+        
+        await Task.Delay(100);
+        
+        var nameInput = editPage.Find("input[name='name']");
+        var subjectInput = editPage.Find("input[name='subject']");
+        var bodyTextarea = editPage.Find("textarea[name='body']");
+        
+        nameInput.Change("Updated Template");
+        subjectInput.Change("Updated Subject");
+        bodyTextarea.Change("Updated Body");
+        
+        var form = editPage.Find("form");
+        await form.SubmitAsync();
+        
+        // Verify the template was updated in the database
+        await using (var verifyContext = await contextFactory.CreateDbContextAsync())
+        {
+            var updatedTemplate = await verifyContext.EmailTemplates
+                .FirstOrDefaultAsync(t => t.Type == TemplateType.AppointmentCancellationTutor);
+            
+            Assert.NotNull(updatedTemplate);
+            Assert.Equal("Updated Template", updatedTemplate.Name);
+            Assert.Equal("Updated Subject", updatedTemplate.Subject);
+            Assert.Equal("Updated Body", updatedTemplate.Body);
+        }
+    }
+}

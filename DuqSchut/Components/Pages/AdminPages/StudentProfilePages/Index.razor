@@ -1,0 +1,128 @@
+@page "/admin/students"
+
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@using Radzen
+@using Radzen.Blazor
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Student Profiles</PageTitle>
+
+<h1>Student Profiles</h1>
+
+<RadzenDataGrid TItem="StudentProfile" Data="@studentProfiles"
+                AllowFiltering="true" AllowPaging="true" AllowSorting="true"
+                PageSize="5">
+    <Columns>
+        <RadzenDataGridColumn TItem="StudentProfile" Property="User.LastName" Title="Last Name" Width="auto" />
+        <RadzenDataGridColumn TItem="StudentProfile" Property="User.FirstName" Title="First Name" Width="auto" />
+        <RadzenDataGridColumn TItem="StudentProfile" Property="User.ID" Title="Email" Width="auto" />
+        <RadzenDataGridColumn TItem="StudentProfile" Property="Term.Name" Title="Term" Width="auto" />
+        <RadzenDataGridColumn TItem="StudentProfile" Property="HoursRemaining" Title="Tutoring Hours Remaining" Width="auto">
+            <Template Context="studentProfile">
+                @studentProfile.HoursRemaining.ToString("F2")
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="StudentProfile" Title="Actions" Width="180px">
+                <Template Context="studentProfile">
+                    <a href="@($"/admin/students/edit?id={studentProfile.ID}")">Edit</a> |
+                </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+<h3>Max Hours for students a week:</h3>
+<InputNumber @bind-Value="inputValue" 
+             id="input"
+             class="form-control" 
+             step="0.5" 
+             placeholder="Enter a number" />
+
+<button class="btn btn-primary mt-2" id="button" @onclick="SetNewMax">
+    Submit
+</button>
+
+<div>
+    <a href="/admin/NavPage">Back to Admin Home</a>
+</div>
+
+
+
+
+@code {
+    private List<StudentProfile> studentProfiles = new();
+
+    private double inputValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            // First choice: currently active term
+            // second choice: the current term (in terms of date)
+            // third choice: upcoming semester
+            var currentTerm = await context.Terms
+                                .Where(term => term.Published == true)
+                                .FirstOrDefaultAsync()
+                                ?? await context.Terms
+                                .Where(term => term.StartDate.Value <= today && term.EndDate.Value >= today)
+                                .FirstOrDefaultAsync()
+                                ?? await context.Terms
+                                .OrderByDescending(term => term.EndDate.Value)
+                                .FirstOrDefaultAsync();
+                                    
+            
+            if (currentTerm is null)
+            {
+                // if there is still no term, just load all student profiles 
+                Logger.LogInformation("No current term found");
+                studentProfiles = await context.StudentProfile
+                                        .Include(p => p.Term)
+                                        .Include(p => p.User)
+                                        .ToListAsync();
+            }
+            else 
+            {
+                studentProfiles = await context.StudentProfile
+                                        .Where(profile => profile.TermID == currentTerm.ID)
+                                        .Include(p => p.Term)     
+                                        .Include(p => p.User)
+                                        .ToListAsync();
+            }
+
+            }
+        catch(Exception e) {
+            Logger.LogError(e, "Error initializing the page");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private void SetNewMax()
+    {
+
+        try {
+            using var context = DbFactory.CreateDbContext();
+
+            foreach(StudentProfile student in studentProfiles)
+            {
+                student.HoursRemaining = inputValue;
+                context.StudentProfile.Update(student);
+            }
+            context.SaveChanges();
+        }
+        catch(Exception e) 
+        {
+            Logger.LogError(e, "Error updating the database with new hours limit");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}
+
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/default.css">
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>

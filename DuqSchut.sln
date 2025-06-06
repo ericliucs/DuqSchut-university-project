@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuqSchut", "DuqSchut\DuqSchut.csproj", "{0813E9A0-6D94-48CC-9AC2-36AA843810C8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuqSchut.Tests", "DuqSchut.Tests\DuqSchut.Tests.csproj", "{5D1943BF-BFFF-4211-A1BE-CE6D94B91D77}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0813E9A0-6D94-48CC-9AC2-36AA843810C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0813E9A0-6D94-48CC-9AC2-36AA843810C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0813E9A0-6D94-48CC-9AC2-36AA843810C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0813E9A0-6D94-48CC-9AC2-36AA843810C8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D1943BF-BFFF-4211-A1BE-CE6D94B91D77}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D1943BF-BFFF-4211-A1BE-CE6D94B91D77}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D1943BF-BFFF-4211-A1BE-CE6D94B91D77}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D1943BF-BFFF-4211-A1BE-CE6D94B91D77}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

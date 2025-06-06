@@ -1,0 +1,392 @@
+@inherits TestContext
+@using DuqSchut.Components.Pages.TutorPages.Profile
+@using Microsoft.AspNetCore.WebUtilities
+
+@code {
+
+    /**
+    <summary>
+     Ensure that only users that are admins have access to the TutorProfileDetails page
+    </summary>
+    */
+    [Fact]
+    public void OnlyTutorAndAdminAreAuthorized()
+    {
+        // Arrange: Retrieve the authorize attribute from ViewAllProfiles
+        var actual = Attribute.GetCustomAttribute(
+            typeof(TutorProfileDetails),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        
+        //Assert that the AuthorizeAttribute exists and its role is an admin
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor,Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Ensure that the back button navigates back to the ViewAllProfiles page
+    </summary>
+    */
+    [Fact]
+    public void BackButtonWorks()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render TutorProfileDetails and click on the "Back" button
+        var component = RenderComponent<TutorProfileDetails>();
+        var button = component.Find("button");
+        button.Click();
+
+        //Assert that it navigates you correctly to "/tutor/profile/" (ViewAllProfiles page)
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.EndsWith("/tutor/profile/", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Ensure that the details page displays all the attribute headers
+    </summary>
+    */
+    [Fact]
+    public void TutorProfileDetailsDisplaysAllSectionLabels()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        // Act: Render the TutorProfileDetails Page
+        var component = RenderComponent<TutorProfileDetails>();
+        var attributes = component.Markup;
+
+        // Assert that all the profile attribute headers are displayed
+        Assert.Contains("Tutor Name:", attributes);
+        Assert.Contains("Term:", attributes);
+        Assert.Contains("Is Approved?:", attributes);
+        Assert.Contains("Courses:", attributes);
+        Assert.Contains("Tutor Availability:", attributes);
+        Assert.Contains("About Me:", attributes);
+    }
+
+    /**
+    <summary>
+     Ensure that the details page displays all the attribute values for the correct profile
+    </summary>
+    */
+    [Fact]
+    public async Task DisplaysCorrectProfileValues()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this); 
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        //Arrange: Add profile, user, term, courses, and schedule blocks to the data base
+        var user = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Tutor, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+        var tutorProfile = new TutorProfile
+        {
+            ID = 1,
+            UserID = "lipeckya@duq.edu",
+            TermID = 1,
+            Term = term,
+            User = user,
+            Approved = true,
+            AboutMe = "I am a tutor"
+        };
+        var tutorCourses = new List<TutorCourse>
+        {
+            new TutorCourse { Course = "Math101", TutorProfileUserID = user.ID, TermID = term.ID },
+            new TutorCourse { Course = "COSC101", TutorProfileUserID = user.ID, TermID = term.ID }
+        };
+        var tutorScheduleBlocks = new List<TutorScheduleBlock>
+        {
+            new TutorScheduleBlock
+            {   DayOfWeek = DaysOfWeek.Monday,
+                StartTime = new TimeOnly(9, 0),
+                EndTime = new TimeOnly(11, 0),
+                Location = "Room 101",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true 
+            },
+            new TutorScheduleBlock
+            {
+                DayOfWeek = DaysOfWeek.Wednesday,
+                StartTime = new TimeOnly(14, 0),
+                EndTime = new TimeOnly(16, 0),
+                Location = "Room 102",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true 
+            }
+        };
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user);
+            context.Terms.Add(term);
+            context.TutorProfiles.Add(tutorProfile);
+            context.TutorCourses.AddRange(tutorCourses);
+            context.TutorScheduleBlocks.AddRange(tutorScheduleBlocks);
+            await context.SaveChangesAsync();
+        }
+
+        //Arrange: use navigation manager to navigate to the correct details page for the profile with the right user and term
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = QueryHelpers.AddQueryString(
+            navManager.GetUriWithQueryParameter("UserID", user.ID),
+            "TermID", term.ID.ToString()
+        );
+        //generated by ChatGPT to add the correct term to the uri
+        navManager.NavigateTo(uri);
+
+        //Act: Render TutorProfileDetails
+        var component = RenderComponent<TutorProfileDetails>();
+
+        var profileName = component.FindAll("p")[0]; //index containing name
+        var profileTerm = component.FindAll("p")[1]; //index containing term
+        var profileApproval = component.FindAll("p")[2]; //index containing approval
+        var coursesList = component.FindAll("ul")[0]; //list containing courses
+        var profileCourses = coursesList.QuerySelectorAll("li");
+        var availabilityList = component.FindAll("ul")[1]; //list containing availability
+        var profileAvailability = availabilityList.QuerySelectorAll("li");
+        var profileAboutMe = component.FindAll("p")[6];  //index containing about me
+
+        //Assert that all of the profile's attribute values are displayed correctly
+        Assert.Contains("Alex Lipecky", profileName.TextContent);
+        Assert.Contains("Spring", profileTerm.TextContent);
+        Assert.Contains("True", profileApproval.TextContent);
+        Assert.Contains("Math101", profileCourses[0].TextContent);
+        Assert.Contains("COSC101", profileCourses[1].TextContent);
+        Assert.Contains("Monday | 9:00 AM - 11:00 AM", profileAvailability[0].TextContent);
+        Assert.Contains("Wednesday | 2:00 PM - 4:00 PM", profileAvailability[1].TextContent);
+        Assert.Contains("I am a tutor", profileAboutMe.TextContent);
+    }
+
+    /**
+    <summary>
+     Ensure that the details page does not display the profile for the wrong term
+    </summary>
+    */
+    [Fact]
+    public async Task DoesNotDisplayProfileForDifferentTerm()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this); 
+        this.AddTestAuthorization().SetAuthorizing();
+
+
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        //Arrange: Add profile, user, term, courses, and schedule blocks to the data base
+        var user = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Tutor, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+        var tutorProfile = new TutorProfile
+        {
+            ID = 1,
+            UserID = "lipeckya@duq.edu",
+            TermID = 1,
+            Term = term,
+            User = user,
+            Approved = true,
+            AboutMe = "I am a tutor"
+        };
+        var tutorCourses = new List<TutorCourse>
+        {
+            new TutorCourse { Course = "Math101", TutorProfileUserID = user.ID, TermID = term.ID },
+            new TutorCourse { Course = "COSC101", TutorProfileUserID = user.ID, TermID = term.ID }
+        };
+        var tutorScheduleBlocks = new List<TutorScheduleBlock>
+        {
+            new TutorScheduleBlock
+            {
+                DayOfWeek = DaysOfWeek.Monday,
+                StartTime = new TimeOnly(9, 0),
+                EndTime = new TimeOnly(11, 0),
+                Location = "Room 101",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true
+            },
+            new TutorScheduleBlock
+            {
+                DayOfWeek = DaysOfWeek.Wednesday,
+                StartTime = new TimeOnly(14, 0),
+                EndTime = new TimeOnly(16, 0),
+                Location = "Room 102",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true 
+            }
+        };
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user);
+            context.Terms.Add(term);
+            context.TutorProfiles.Add(tutorProfile);
+            context.TutorCourses.AddRange(tutorCourses);
+            context.TutorScheduleBlocks.AddRange(tutorScheduleBlocks);
+            await context.SaveChangesAsync();
+        }
+
+        //Arrange: use navigation manager to navigate to the details page for correct user but different term
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = QueryHelpers.AddQueryString(
+            navManager.GetUriWithQueryParameter("UserID", user.ID),
+            "TermID", "2"
+        );
+
+        navManager.NavigateTo(uri);
+
+        //Act: Render the TutorProfileDetails page
+        var component = RenderComponent<TutorProfileDetails>();
+
+        var profileName = component.FindAll("p")[0]; //index containing name
+        var profileTerm = component.FindAll("p")[1]; //index containing term
+        var profileApproval = component.FindAll("p")[2]; //index containing approval
+        var coursesList = component.Find("ul"); //list containing courses
+        var profileCourses = coursesList.QuerySelectorAll("li");
+        var availabilityList = component.FindAll("ul")[1]; //list containing availability
+        var profileAvailability = availabilityList.QuerySelectorAll("li");
+        var profileAboutMe = component.FindAll("p")[6]; //index containing about me
+
+        //Assert that the attributes for the wrong term is not displayed
+        Assert.DoesNotContain("Alex Lipecky", profileName.TextContent);
+        Assert.DoesNotContain("Spring", profileTerm.TextContent);
+        Assert.DoesNotContain("True", profileApproval.TextContent);
+        Assert.Empty(profileCourses);
+        Assert.Empty(profileAvailability);
+        Assert.DoesNotContain("I am a tutor", profileAboutMe.TextContent);
+    }
+
+    /**
+    <summary>
+     Ensure that the details page does not display the profile for the wrong user
+    </summary>
+    */
+    [Fact]
+    public async Task DoesNotDisplayProfileForDifferentUser()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this); 
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        //Arrange: Add profile, user, term, courses, and schedule blocks to the data base
+        var user = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Tutor, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+        var tutorProfile = new TutorProfile
+        {
+            ID = 1,
+            UserID = "lipeckya@duq.edu",
+            TermID = 1,
+            Term = term,
+            User = user,
+            Approved = true,
+            AboutMe = "I am a tutor"
+        };
+        var tutorCourses = new List<TutorCourse>
+        {
+            new TutorCourse { Course = "Math101", TutorProfileUserID = user.ID, TermID = term.ID },
+            new TutorCourse { Course = "COSC101", TutorProfileUserID = user.ID, TermID = term.ID }
+        };
+        var tutorScheduleBlocks = new List<TutorScheduleBlock>
+        {
+            new TutorScheduleBlock
+            {
+                DayOfWeek = DaysOfWeek.Monday,
+                StartTime = new TimeOnly(9, 0),
+                EndTime = new TimeOnly(11, 0),
+                Location = "Room 101",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true 
+            },
+            new TutorScheduleBlock
+            {
+                DayOfWeek = DaysOfWeek.Wednesday,
+                StartTime = new TimeOnly(14, 0),
+                EndTime = new TimeOnly(16, 0),
+                Location = "Room 102",
+                TutorProfileID = tutorProfile.ID,
+                isActive = true
+            }
+        };
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user);
+            context.Terms.Add(term);
+            context.TutorProfiles.Add(tutorProfile);
+            context.TutorCourses.AddRange(tutorCourses);
+            context.TutorScheduleBlocks.AddRange(tutorScheduleBlocks);
+            await context.SaveChangesAsync();
+        }
+
+        //Arrange: use navigation manager to navigate to the details page for the wrong user but correct term
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        //naviagte to details page for wrong user "test@duq.edu"
+        var uri = QueryHelpers.AddQueryString(
+            navManager.GetUriWithQueryParameter("UserID", "test@duq.edu"),
+            "TermID", term.ID.ToString()
+        );
+        navManager.NavigateTo(uri);
+
+        //Act: Render the TutorProfileDetails page
+        var component = RenderComponent<TutorProfileDetails>();
+
+        var profileName = component.FindAll("p")[0]; //index containing name
+        var profileTerm = component.FindAll("p")[1]; //index containing term
+        var profileApproval = component.FindAll("p")[2]; //index containing approval
+        var coursesList = component.Find("ul"); //list containing courses
+        var profileCourses = coursesList.QuerySelectorAll("li");
+        var availabilityList = component.FindAll("ul")[1]; //list containing availability
+        var profileAvailability = availabilityList.QuerySelectorAll("li");
+        var profileAboutMe = component.FindAll("p")[6]; //index containing about me
+
+        //Assert that the attributes for the wrong user is not displayed
+        Assert.DoesNotContain("Alex Lipecky", profileName.TextContent);
+        Assert.DoesNotContain("Spring", profileTerm.TextContent);
+        Assert.DoesNotContain("True", profileApproval.TextContent);
+        Assert.Empty(profileCourses);
+        Assert.Empty(profileAvailability);
+        Assert.DoesNotContain("I am a tutor", profileAboutMe.TextContent);
+    }
+}

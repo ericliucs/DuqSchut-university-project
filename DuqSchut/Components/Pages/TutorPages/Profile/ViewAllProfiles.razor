@@ -1,0 +1,47 @@
+@page "/tutor/profile/" 
+@using Microsoft.AspNetCore.Components.QuickGrid
+@namespace DuqSchut.Components.Pages.TutorPages.Profile
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Tutor,Admin")]
+
+@* While waiting for the database context to load, the page should not display any data. *@
+@if(IsLoading)
+{
+    <p>Loading...</p>
+}
+else
+{
+    @* Term Select Menu *@
+    @*
+        Each option holds the term ID and displays the name from the database.
+    *@
+    <select @bind="@SelectedTermID">
+        @foreach(Term term in Terms)
+        {
+            <option value="@term.ID.ToString()">@term.Name</option>
+        }
+    </select>
+
+    @* Button to add a new TutorProfile *@
+    <div>
+        <button type="button" class="btn btn-secondary mt-2" @onclick="CreateTutorProfile">Create Profile</button>
+    </div>
+
+    @* Tutor Profiles Table *@
+    @* 
+        Uses the QuickGrid component to generate an interactive table.
+
+        Information:
+            - Queries made to the database must be written in a LINQ readable format. For this reason, the queries are written directly into the html here.
+            - The context variable in the template column is QuickGrid's naming convention for a single item from the queryable list.
+    *@
+    <QuickGrid Items="TutorProfiles">
+        <PropertyColumn Title="First Name" Property="@(profile => Context.Users.Where(user => user.ID == profile.UserID).First().FirstName)" Sortable="true" />
+        <PropertyColumn Title="Last Name" Property="@(profile => Context.Users.Where(user => user.ID == profile.UserID).First().LastName)" Sortable="true" />
+        <TemplateColumn Title="Actions">
+            <a href="@($"/tutor/profile/details?UserID={context.UserID}&TermID={context.TermID}")">Details</a>
+            <a href="@($"/tutor/profile/edit?UserID={context.UserID.ToString()}&TermID={context.TermID}")">Edit</a>
+            <a href="@($"/tutor/profile/remove/{context.UserID}")">Remove</a>
+        </TemplateColumn>
+    </QuickGrid>
+}

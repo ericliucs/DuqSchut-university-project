@@ -1,0 +1,55 @@
+@using DuqSchut.Components.Pages.StudentPages.Appointments
+@using System.Security.Claims
+@using DuqSchut.Services
+@inherits TestContext
+
+@inject IAppointmentService AppointmentService
+
+@code{
+
+    /**
+    <summary>
+    Test that Index (home) page contains @attribute [Authorize]
+    </summary>
+    */
+    [Fact]
+    public void PageContainsAuthorize()
+    {
+    var actual = Attribute.GetCustomAttribute(
+        typeof(Components.Pages.StudentPages.Appointments.Index),
+        typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+    Assert.NotNull(actual);
+    }
+
+    [Fact]
+    /**
+    <summary>
+    This test is to see if the h1 tag on the student home 
+    displays Hello [user name] for authenticated user.
+    </summary>
+    */
+    public void UserPageh1ContentIsStudentHomeIfAuthorized(){
+        // Arrange
+        DBUtils.CreateDB(this);
+        
+        // Register Appointment Service
+        Services.AddSingleton<IAppointmentService, AppointmentService>();
+
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetClaims(
+            new Claim("name", "TEST USER"),
+            new Claim("email", "testuser@duq.edu")
+        );
+    
+        // Act
+        var cut = RenderComponent<Components.Pages.StudentPages.Appointments.Index>();
+
+        // Assert
+        cut.Find("h1").TextContent.MarkupMatches("Hello TEST USER");
+
+    }
+
+
+
+}   

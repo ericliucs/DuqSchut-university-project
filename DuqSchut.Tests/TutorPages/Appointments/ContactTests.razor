@@ -1,0 +1,157 @@
+@using DuqSchut.Components.Pages.TutorPages.Appointments
+@using System.Security.Claims
+
+@inherits TestContext
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Data
+@using DuqSchut.Models
+@using DuqSchut.Services
+@inject IEmailDependency email
+
+@code {
+     /**
+   <summary>
+    Test that TutorHome contains
+    @attribute [Authorize(Roles = "Tutor,Admin")]
+   </summary>
+  */
+  [Fact]
+    public void TutorsAndAdminAreAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+          typeof(DuqSchut.Components.Pages.TutorPages.Appointments.Contact), 
+          typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor, Admin", actual.Roles);
+    }
+
+    [Fact]
+    /**
+      <summary>
+        This tests to see if the send button exist.
+      </summary>
+    */
+    public async Task SendButtonExists()
+    {
+        this.AddTestAuthorization().SetAuthorizing();
+        Services.AddSingleton<IEmailDependency,TrueOrFalseEmailService>();
+        
+        DBUtils.CreateDB(this);
+        
+        var appointment = new Appointment
+        {
+          ID = 1,
+          TuteeID = "test@duq.edu"
+        };
+        var dbFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        Assert.NotNull(dbFactory);
+        var context = dbFactory.CreateDbContext();
+        context.Appointments.Add(appointment);
+        await context.SaveChangesAsync();
+     
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID",appointment.ID);
+        navManager.NavigateTo(uri);
+        
+        var cut = RenderComponent<Contact>();
+
+        var button = cut.Find("button.btn-primary");
+        button.TextContent.Equals("Send Email");
+    }
+
+
+    [Theory]
+    [InlineData("Admin", "/admin/appointments")]
+    [InlineData("Tutor", "/TutorPages/Appointments/Index")]
+    /**
+      <summary>
+        This tests to see that the send button navigates back to index if the email was sent successfully
+      </summary>
+    */
+    public async Task SendButtonNavigatesToIndexUponSuccessfulEmail(string role, string path)
+    {
+        this.AddTestAuthorization().SetAuthorizing();
+        Services.AddSingleton<IEmailDependency,TrueOrFalseEmailService>();
+        
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetRoles(role);
+        
+        var appointment = new Appointment
+        {
+          ID = 1,
+          TuteeID = "test@duq.edu"
+        };
+        var dbFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        Assert.NotNull(dbFactory);
+        var context = dbFactory.CreateDbContext();
+        context.Appointments.Add(appointment);
+        await context.SaveChangesAsync();
+     
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID",appointment.ID);
+        navManager.NavigateTo(uri);
+        var cut = RenderComponent<Contact>();
+        // Act
+        cut.Find("button.btn-primary").Click(); // Click Send Email button
+
+        // Assert
+        Assert.EndsWith(path, navManager.Uri);
+    }
+
+    [Fact]
+    /**
+      <summary>
+        This tests to see that the send button navigates to error if the email is not sent
+      </summary>
+    */
+    public async Task SendButtonNavigatesToErrorUponUnsuccessfulEmail()
+    {
+        this.AddTestAuthorization().SetAuthorizing();
+        Services.AddSingleton<IEmailDependency,TrueOrFalseEmailService>();
+        
+        DBUtils.CreateDB(this);
+        
+        var appointment = new Appointment
+        {
+          ID = 1,
+          TuteeID = "fail@duq.edu"
+        };
+        var dbFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        Assert.NotNull(dbFactory);
+        var context = dbFactory.CreateDbContext();
+        context.Appointments.Add(appointment);
+        await context.SaveChangesAsync();
+     
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = navManager.GetUriWithQueryParameter("ID",appointment.ID);
+        navManager.NavigateTo(uri);
+        var cut = RenderComponent<Contact>();
+        // Act
+        cut.Find("button.btn-primary").Click(); // Click Send Email button
+
+        // Assert
+        Assert.EndsWith("/Error" , navManager.Uri);
+    }
+
+
+    public class TrueOrFalseEmailService : IEmailDependency
+    {
+        public Task<bool> SendEmailAsync(
+            string recipientEmail, string subject, string body){
+                if(recipientEmail.Equals("fail@duq.edu")){
+                    return Task.FromResult(false);
+                }
+                else{
+                    return Task.FromResult(true);
+                }
+            }
+    }
+
+
+
+}

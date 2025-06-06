@@ -1,0 +1,227 @@
+@using DuqSchut.Data
+@using DuqSchut.Models
+@inherits TestContext
+
+@code {
+    //  Example bUnit test for the Terms Index page.
+    //  Builds upon the existing test structure used in this project.
+
+    // Adam Lewis built onto this test to test the RadzenDataGrid component on the Index page. 
+    // ChatGPT was used to help create the TermsPage_DisplaysCorrectData test function, I made the 
+    // neccessary edits and changes to get it running without errors.
+
+    // This test covers:
+    //  - Display with no data
+    //  - Display with seeded data
+    //  - Navigation button functionality ("create","edit","detail","delete")
+
+    /**
+    <summary>
+        Test that NavPage contains
+        @attribute [Authorize(Roles = "Admin")]
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(DuqSchut.Components.Pages.AdminPages.TermPages.Index), 
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+    
+    /** <summary>
+    This test will ensure the data grid is displaying correctly without any data.
+    The data grid should show two rows. The first row is the headings, the second row shows "No records to display".
+    </summary> */
+    [Fact]
+    public void OnlyHeadingRowDisplayedWhenDBIsEmpty()
+    {
+        // Arrange: Create an empty DB and render the Index component
+        DBUtils.CreateDB(this);
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Assert: Only the heading row should exist (no data rows)
+        // With the new radzen data grid component, empty data will show two rows
+        // the first row will have the headings, the second shows "No records to display"
+        var rowCount = cut.FindAll("tr").Count;
+        Assert.Equal(2, rowCount);
+    }
+
+    /** 
+    <summary>
+    Test to ensure that the term page is displaying correctly with seeded data.
+    It adds in two courses, then ensures there's a valid amount of rows in the data grid.
+    </summary> */
+    [Fact]
+    public void TermsPageDisplaysCorrectData()
+    {
+        // Arrange: Create in-memory database
+        DBUtils.CreateDB(this); // No assignment needed
+
+        // Retrieve the injected database context and add test data
+        var contextFactory = Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<DuqSchutContext>>();
+        
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            dbContext.Terms.AddRange(new List<Term>
+            {
+                new Term { ID = 1, 
+                    Name = "Spring 2025",
+                    StartDate = DateOnly.Parse("2025-01-10"), 
+                    EndDate = DateOnly.Parse("2025-05-20"), 
+                    TimeIncrement = TermTimeIncrement.Hour, 
+                    MaxHoursTuteesAllowed = 10,
+                    MinTutorWeeklyHours = 5, 
+                    MaxTutorWeeklyHours = 20, 
+                    Published = true },
+
+                new Term { ID = 2, 
+                    Name = "Fall 2025", 
+                    StartDate = DateOnly.Parse("2025-08-15"), 
+                    EndDate = DateOnly.Parse("2025-12-20"), 
+                    TimeIncrement = TermTimeIncrement.Hour,
+                    MaxHoursTuteesAllowed = 15, 
+                    MinTutorWeeklyHours = 6,
+                    MaxTutorWeeklyHours = 25, 
+                    Published = false }
+            });
+            dbContext.SaveChanges();
+        }
+
+        // Act: Render the Terms Index component
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Assert: The data grid should render with the expected terms
+        Assert.Contains("Spring 2025", cut.Markup);
+        Assert.Contains("Fall 2025", cut.Markup);
+
+        // Ensure that rows for terms exist in the table
+        var rowCount = cut.FindAll("tr").Count;
+        Assert.True(rowCount > 1); // More than just the heading row
+    }
+
+    /**
+    <summary>
+    Test for the "Create New Term" button navigation. This test will ensure the "Create New Term" takes
+    you to the terms/create page.
+    </summary> */
+    [Fact]
+    public void CreateButtonNavigatesToCreatePage()
+    {
+        // Arrange: Create in-memory database
+        DBUtils.CreateDB(this);
+
+        // Act: Render the Terms Index component
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Find the "Create New Term" button (first <a> link in the page)
+        var createButton = cut.Find("p a");
+
+        // Assert: The button should exist and navigate to "/terms/create"
+        Assert.NotNull(createButton);
+        Assert.Equal("Create New Term", createButton.TextContent);
+        Assert.Equal("/admin/terms/create", createButton.GetAttribute("href"));
+    }
+
+    /**
+    <summary>
+    Test for the "Edit" button navigation. This test will ensure the "Edit" takes
+    you to the terms/edit page associated with the selcted term to edit's ID.
+    </summary> */
+    [Fact]
+    public void EditButtonNavigatesToCorrectEditPage()
+    {
+        // Arrange: Create in-memory database
+        DBUtils.CreateDB(this);
+
+        // Retrieve the injected database context and add test data
+        var contextFactory = Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<DuqSchutContext>>();
+        
+        var term = new Term { ID = 1, Name = "Spring 2025", StartDate = DateOnly.Parse("2025-01-10"), EndDate = DateOnly.Parse("2025-05-20"), Published = true };
+        
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            dbContext.Terms.Add(term);
+            dbContext.SaveChanges();
+        }            
+
+        // Act: Render the Terms Index component
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Find the "Edit" button for the first term
+        var editButton = cut.Find($"a[href='/admin/terms/edit?id={term.ID}']");
+
+        // Assert: The button should navigate to the correct edit page
+        Assert.NotNull(editButton);
+        Assert.Equal("Edit", editButton.TextContent);
+        Assert.Equal($"/admin/terms/edit?id={term.ID}", editButton.GetAttribute("href"));
+    }
+
+    /**
+    <summary>
+    Test for the "Details" button navigation. This test will ensure the "Details" takes
+    you to the terms/details page associated with the selcted term's ID.
+    </summary> */
+    [Fact]
+    public void DetailsButtonNavigatesToCorrectDetailsPage()
+    {
+        // Arrange: Create in-memory database
+        DBUtils.CreateDB(this);
+
+        // Retrieve the injected database context and add test data
+        var contextFactory = Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<DuqSchutContext>>();
+        var term = new Term { ID = 1, Name = "Spring 2025", StartDate = DateOnly.Parse("2025-01-10"), EndDate = DateOnly.Parse("2025-05-20"), Published = true };
+        
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            dbContext.Terms.Add(term);
+            dbContext.SaveChanges();
+        }
+        
+        // Act: Render the Terms Index component
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Find the "Details" button for the first term
+        var detailsButton = cut.Find($"a[href='/admin/terms/details?id={term.ID}']");
+
+        // Assert: The button should navigate to the correct details page
+        Assert.NotNull(detailsButton);
+        Assert.Equal("Details", detailsButton.TextContent);
+        Assert.Equal($"/admin/terms/details?id={term.ID}", detailsButton.GetAttribute("href"));
+    }
+
+    /**
+    <summary>
+    Test for the "Delete" button navigation. This test will ensure the "Delete" takes
+    you to the terms/delete page associated with the selcted term's ID.
+    </summary> */
+    [Fact]
+    public void DeleteButtonNavigatesToCorrectDeletePage()
+    {
+        // Arrange: Create in-memory database
+        DBUtils.CreateDB(this);
+
+        // Retrieve the injected database context and add test data
+        var contextFactory = Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<DuqSchutContext>>();
+        var term = new Term { ID = 1, Name = "Spring 2025", StartDate = DateOnly.Parse("2025-01-10"), EndDate = DateOnly.Parse("2025-05-20"), Published = true };
+        
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            dbContext.Terms.Add(term);
+            dbContext.SaveChanges();
+        }        
+
+        // Act: Render the Terms Index component
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.TermPages.Index>();
+
+        // Find the "Delete" button for the first term
+        var deleteButton = cut.Find($"a[href='/admin/terms/delete?id={term.ID}']");
+
+        // Assert: The button should navigate to the correct delete page
+        Assert.NotNull(deleteButton);
+        Assert.Equal("Delete", deleteButton.TextContent);
+        Assert.Equal($"/admin/terms/delete?id={term.ID}", deleteButton.GetAttribute("href"));
+    }
+}

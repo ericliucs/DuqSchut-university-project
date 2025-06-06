@@ -1,0 +1,155 @@
+@using DuqSchut.Components.Pages.StudentPages.Appointments;
+@using System.Security.Claims
+@using System.Collections.Generic
+@using System.Text.Json
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Text.RegularExpressions;
+@using System.Linq;
+@inherits TestContext
+
+@code
+{
+    
+    private void SetupAuth()
+    {
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetClaims(
+            new Claim("name", "TEST USER"),
+            new Claim("email", "testuser@duq.edu")
+        );
+    }
+
+    // This checks that any user can access the page
+    [Fact]
+    public void AnyUserIsAuthorized()
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(StudentDeleteAppointment),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        
+        Assert.NotNull(actual);
+        Assert.Null(actual.Roles);
+    }
+
+    [Fact]
+    public async Task Delete_Appointment_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        int appointmentId;
+        using (var context = dbFactory.CreateDbContext())
+        {
+            var student = new User
+            {
+                ID = "testuser@duq.edu",
+                FirstName = "Test",
+                LastName = "User",
+                Role = UserRole.Student
+            };
+            var tutor = new User
+            {
+                ID = "tutor1@duq.edu",
+                FirstName = "Tutor",
+                LastName = "One",
+                Role = UserRole.Tutor
+            };
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var appointment = new Appointment
+            {
+                TuteeID = student.ID,
+                TutorID = tutor.ID,
+                Date = today.AddMonths(1), // ensure that appointment is in the future
+                StartTime = new TimeOnly(10, 0),
+                EndTime = new TimeOnly(10, 30),
+                Location = "CH",
+                Course = "COSC 215",
+                Purpose = "Help with CompSci",
+                TermID = 101
+            };
+
+            context.Users.AddRange(student, tutor);
+            context.Appointments.Add(appointment);
+            await context.SaveChangesAsync();
+
+            appointmentId = appointment.ID;
+        }
+
+        var MockNav = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = MockNav.GetUriWithQueryParameter("id", appointmentId.ToString());
+        MockNav.NavigateTo(uri);
+
+        var page = RenderComponent<StudentDeleteAppointment>();
+        var delete = page.Find("button.Delete");
+        delete.Click();
+        Assert.EndsWith("/student/appointments", MockNav.Uri);
+        using (var context = dbFactory.CreateDbContext())
+        {
+            Assert.Empty(context.Appointments);
+        }
+    }
+    [Fact]
+    public async Task Reject_Button_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        int appointmentId;
+
+        using (var context = dbFactory.CreateDbContext())
+        {
+            var student = new User
+            {
+                ID = "testuser@duq.edu",
+                FirstName = "Test",
+                LastName = "User",
+                Role = UserRole.Student
+            };
+            var tutor = new User
+            {
+                ID = "tutor1@duq.edu",
+                FirstName = "Tutor",
+                LastName = "One",
+                Role = UserRole.Tutor
+            };
+
+            var appointment = new Appointment
+            {
+                TuteeID = student.ID,
+                TutorID = tutor.ID,
+                Date = new DateOnly(2025, 4, 10),
+                StartTime = new TimeOnly(10, 0),
+                EndTime = new TimeOnly(10, 30),
+                Location = "CH",
+                Course = "COSC 215",
+                Purpose = "Help with CompSci",
+                TermID = 101
+            };
+
+            context.Users.AddRange(student, tutor);
+            context.Appointments.Add(appointment);
+            await context.SaveChangesAsync();
+
+            appointmentId = appointment.ID;
+        }
+
+        var MockNav = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = MockNav.GetUriWithQueryParameter("id", appointmentId.ToString());
+        MockNav.NavigateTo(uri);
+
+        var page = RenderComponent<StudentDeleteAppointment>();
+
+        var backButton = page.Find("a.Reject");
+        var href = backButton.GetAttribute("href");
+
+        if (!string.IsNullOrEmpty(href))
+        {
+            MockNav.NavigateTo(href);
+        }
+
+        Assert.EndsWith("/student/appointments", MockNav.Uri);
+    }
+}

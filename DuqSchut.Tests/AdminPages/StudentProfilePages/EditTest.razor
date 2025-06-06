@@ -1,0 +1,178 @@
+@inherits TestContext
+
+@code {
+    // This test was created by Adam Lewis, chatGPT was used to help debug some errors and previous test pages
+    //      were referenced in the creation 
+
+    // This test covers:
+    //      - Checking that the page is restricted to Admins
+    //      - Verifying the correct student data loads into the page
+    //      - Verifying that the HoursRemaining field updates the data base when edited and save is pressed
+    //      - Verifying that the back button correctly directs you to the /admin/students page
+
+    /**
+    <summary>
+        Test that the Edit page is restricted to Admins.
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorizedToEdit()
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Edit),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+        Verifies that the Edit page loads the correct student data when a profile exists in the database.
+    </summary>
+    */
+    [Fact]
+    public void EditPageDisplaysCorrectData()
+    {
+        DBUtils.CreateDB(this);
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        using (var db = dbFactory.CreateDbContext())
+        {
+            var user = new User
+            {
+                ID        = "test1@duq.edu",
+                FirstName = "Adam",
+                LastName  = "Lewis",
+                Role      = UserRole.Student
+            };
+
+            db.Users.Add(user);
+            db.StudentProfile.Add(new StudentProfile
+            {
+                ID             = 1,
+                UserID         = user.ID,
+                User           = user,
+                TermID         = 1,
+                HoursRemaining = 2
+            });
+            db.SaveChanges();
+        }
+
+        var nav = Services.GetRequiredService<FakeNavigationManager>();
+        nav.NavigateTo(nav.GetUriWithQueryParameter("ID", "1"));
+
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Edit>();
+
+        // First name should appear in the disabled input
+        Assert.Contains("Adam", cut.Markup);
+
+        // HoursRemaining should be the value of the number input (usually 2)
+        var hoursInput = cut.Find("input#hours");
+        Assert.Equal("2", hoursInput.GetAttribute("value"));
+    }
+
+    /**
+    <summary>
+        Updates HoursRemaining in the edit page, clicks Save, and confirms:
+        (1) the value is stored in the database and
+        (2) the page redirects to <c>/admin/students</c>.
+    </summary>
+    */
+    [Fact]
+    public async Task EditPageSavesUpdatedHoursRemaining()
+    {
+        DBUtils.CreateDB(this);
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        // Seed a profile with 2 hours remaining
+        using (var db = dbFactory.CreateDbContext())
+        {
+            var user = new User
+            {
+                ID        = "test@duq.edu",
+                FirstName = "Adam",
+                LastName  = "Lewis",
+                Role      = UserRole.Student
+            };
+
+            db.Users.Add(user);
+            db.StudentProfile.Add(new StudentProfile
+            {
+                ID             = 1,
+                UserID         = user.ID,
+                User           = user,
+                TermID         = 1,
+                HoursRemaining = 2
+            });
+            db.SaveChanges();
+        }
+
+        var nav = Services.GetRequiredService<FakeNavigationManager>();
+        nav.NavigateTo(nav.GetUriWithQueryParameter("ID", "1"));
+
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Edit>();
+
+        // Change HoursRemaining to 0 and submit
+        cut.Find("input#hours").Change("0");
+        await cut.Find("button[type='submit']").ClickAsync(new());
+
+        // 1) Redirect happened
+        Assert.EndsWith("/admin/students", nav.Uri);
+
+        // 2) Database updated
+        using var verifyCtx = dbFactory.CreateDbContext();
+        var refreshed = verifyCtx.StudentProfile.Find(1);
+
+        Assert.NotNull(refreshed);
+        Assert.Equal(0, refreshed!.HoursRemaining);
+    }
+
+    /**
+    <summary>
+        Ensures that the “Back to List” link on the Edit page navigates back to the admin/students page
+    </summary>
+    */
+    [Fact]
+    public void EditPageBackLinkPointsToStudentList()
+    {
+        // ---------- Arrange ----------
+        DBUtils.CreateDB(this);
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        // Seed minimal profile so the page loads
+        using (var db = dbFactory.CreateDbContext())
+        {
+            var user = new User
+            {
+                ID        = "test@duq.edu",
+                FirstName = "Adam",
+                LastName  = "Lewis",
+                Role      = UserRole.Student
+            };
+
+            db.Users.Add(user);
+            db.StudentProfile.Add(new StudentProfile
+            {
+                ID             = 10,
+                UserID         = user.ID,
+                User           = user,
+                TermID         = 1,
+                HoursRemaining = 1
+            });
+            db.SaveChanges();
+        }
+
+        var nav = Services.GetRequiredService<FakeNavigationManager>();
+        nav.NavigateTo(nav.GetUriWithQueryParameter("ID", "10"));
+
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Edit>();
+
+        var backLink = cut.Find("a[href='/admin/students']");
+        // link exists
+        Assert.NotNull(backLink);                       
+        Assert.Equal("/admin/students", backLink.GetAttribute("href"));
+    }
+
+
+}

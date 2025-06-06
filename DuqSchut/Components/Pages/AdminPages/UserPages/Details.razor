@@ -1,0 +1,63 @@
+@page "/admin/users/details"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Details> Logger
+    
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>User</h2>
+    <hr />
+    @if (user is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">FirstName</dt>
+            <dd class="col-sm-10">@user.FirstName</dd>
+            <dt class="col-sm-2">LastName</dt>
+            <dd class="col-sm-10">@user.LastName</dd>
+            <dt class="col-sm-2">Role</dt>
+            <dd class="col-sm-10">@user.Role</dd>
+        </dl>
+        <div>
+            <a href="@($"/admin/users/edit?id={user.ID}")">Edit</a> |
+            <a href="@($"/admin/users")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    #nullable enable
+    private User? user;
+    #nullable disable
+
+    [SupplyParameterFromQuery]
+    private string ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+            user = await context.Users.FirstOrDefaultAsync(m => m.ID == ID);
+
+            if (user is null)
+            {
+            NavigationManager.NavigateTo("notfound");
+            }
+
+        }catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+
+        
+    }
+}

@@ -1,0 +1,233 @@
+@page "/admin/terms/edit"
+
+@using DuqSchut.Components.Shared.TermPages
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<Edit> Logger
+@inject NavigationManager NavigationManager
+<!-- Using the Radzen.Blazor package to add a new grid component -->  
+@using Radzen
+@using Radzen.Blazor
+<!-- Added to make the Redzen Form interactive --> 
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Edit Term</PageTitle>
+
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css">
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+
+
+<h1>Edit Term</h1>
+<hr />
+@if (Term is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+     // Updated the form using the Radzen components from TemplateForm 
+<EditForm method="post" Model="Term" OnValidSubmit="UpdateTerm" FormName="edit">
+        <DataAnnotationsValidator />
+        <ValidationSummary role="alert" />
+        <input type="hidden" name="Term.ID" value="@Term.ID" />
+        <RadzenRow Gap="3rem" class="rz-p-0 rz-p-lg-4">
+            <RadzenColumn Size="12" SizeMD="6">
+                <RadzenFieldset Text="Term Details">
+                    <RadzenStack Gap="3rem">
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Name" Component="name" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenTextBox Style="width: 100%;" Name="name" @bind-Value="Term.Name" />
+
+                            </RadzenColumn>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Start Date" Component="startdate" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenDatePicker Style="width: 100%;" Name="startdate" @bind-Value="StartDateTime"
+                                 DateFormat="M/d/yyyy" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="End Date" Component="enddate" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenDatePicker Style="width: 100%;" Name="enddate" @bind-Value="EndDateTime"
+                                 DateFormat="M/d/yyyy" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Time Increment" Component="timeincrement" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenDropDown Name="timeincrement" @bind-Value="Term.TimeIncrement" Data="@TimeIncrementsList" Style="width: 100%;" />
+                            </RadzenColumn>
+                        </RadzenRow>
+
+                     @* // removed these fields because Mr. Lipecky said he did not see any necessity for them 
+                     <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Max Hours Tutees Allowed" Component="maxhourstuteesallowed" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenNumeric Name="maxhourstuteesallowed" @bind-Value="Term.MaxHoursTuteesAllowed" Style="width: 100%;" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+    using Microsoft.CodeAnalysis.CSharp;
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Min Tutor Weekly Hours" Component="mintutorweeklyhours" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenNumeric Name="mintutorweeklyhours" @bind-Value="Term.MinTutorWeeklyHours" Style="width: 100%;" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Max Tutor Weekly Hours" Component="maxtutorweeklyhours" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenNumeric Name="maxtutorweeklyhours" @bind-Value="Term.MaxTutorWeeklyHours" Style="width: 100%;" />
+                            </RadzenColumn>
+                        </RadzenRow> *@
+                        <RadzenRow>
+                            <CourseInput @ref=courseInputRef CurrentCourses="Term.Courses" ></CourseInput>
+                        </RadzenRow>
+                        <RadzenRow AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="12" SizeMD="4">
+                                <RadzenLabel Text="Published" Component="published" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="8">
+                                <RadzenCheckBox Name="published" @bind-Value="Term.Published" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                    </RadzenStack>
+                </RadzenFieldset>
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Center" Gap="1rem" class="rz-mt-8 rz-mb-4">
+            <RadzenButton ButtonType="ButtonType.Submit" Size="ButtonSize.Large" Icon="save" Text="Save" />
+        </RadzenStack>
+    </EditForm>
+}
+
+<div>
+    <a href="/admin/terms" @onclick="NavigateToTerms">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int ID { get; set; }
+
+    [SupplyParameterFromForm]
+    #nullable enable
+    private Term? Term { get; set; }
+
+    // Use DateTime on the page to allow RadzenDatePicker components to be accessed 
+    // from EditTest.
+    private DateTime StartDateTime { get; set; }
+    private DateTime EndDateTime { get; set; }
+    #nullable disable
+
+    private CourseInput courseInputRef;
+    // list to hold the enum values for the TimeIncrement property
+    private List<TermTimeIncrement> TimeIncrementsList { get; set; }
+
+    protected override void OnInitialized()
+    {
+        try {
+            TimeIncrementsList = Enum.GetValues(typeof(TermTimeIncrement)).Cast<TermTimeIncrement>().ToList();
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            using var context = DbFactory.CreateDbContext();
+
+            // explicitly load the courses associated with the term
+            Term = await context.Terms.Include(t => t.Courses).FirstOrDefaultAsync(m => m.ID == ID);
+
+            if (Term is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+
+            // Convert from DateOnly in database to DateTime on page
+            StartDateTime = Term.StartDate?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Now;
+            EndDateTime = Term.EndDate?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Now;
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateTerm()
+    {
+        try {
+            using var context = DbFactory.CreateDbContext();
+            context.Terms.Update(Term); // Track modifications of Term and Term.Courses
+
+            foreach (var course in courseInputRef.Courses)
+            {
+                if (!Term.Courses.Any(c => c.Course == course))
+                {
+                    var newCourse = new TermCourse{ Course = course, TermID = Term.ID };
+                    Term.Courses.Add(newCourse);
+                }
+            }
+
+            foreach (var termCourse in Term.Courses.ToList())
+            {
+                if (!courseInputRef.Courses.Contains(termCourse.Course))
+                {
+                    Term.Courses.Remove(termCourse);
+                }
+            }
+
+            // Convert from DateTime to DateOnly
+            Term.StartDate = DateOnly.FromDateTime(StartDateTime);
+            Term.EndDate = DateOnly.FromDateTime(EndDateTime);
+            
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/admin/terms");
+
+        } catch (DbUpdateConcurrencyException) {
+            if (!TermExists(Term!.ID))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private bool TermExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Terms.Any(e => e.ID == id);
+    }
+
+    // Method to navigate back to the terms page
+    private void NavigateToTerms()
+    {
+        NavigationManager.NavigateTo("/admin/terms");
+    }
+}

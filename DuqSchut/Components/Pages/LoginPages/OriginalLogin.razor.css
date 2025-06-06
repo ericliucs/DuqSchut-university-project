@@ -1,0 +1,15 @@
+#username , #firstname{
+    border: 1px solid darkblue;
+    padding: 3px;
+    background-color: gray;
+}
+
+#firstnamelabel {
+    margin-left: 63px;
+}
+
+#login-button {
+    width: 55px;
+    height: 40px;
+    margin-left: 70px;
+}

@@ -1,0 +1,77 @@
+@using Microsoft.EntityFrameworkCore;
+@using DuqSchut.Models;
+@using DuqSchut.Data;
+@using DuqSchut.Components.Pages.AdminPages.TermPages;
+@using DuqSchut.Tests;
+
+@code {
+
+   public class TermsCreateTests : TestContext
+   {
+      /**
+      <summary>
+      Test that NavPage contains
+      @attribute [Authorize(Roles = "Admin")]
+      </summary>
+      */
+      [Fact]
+      public void OnlyAdminIsAuthorized()
+      {
+         var actual = Attribute.GetCustomAttribute(
+         typeof(Create),
+         typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+         Assert.NotNull(actual);
+         Assert.Equal("Admin", actual.Roles);
+      }
+
+      [Fact]
+      public void TermsCreate_RendersFormCorrectly()
+      {
+         // Arrange
+         DBUtils.CreateDB(this);
+
+         var cut = RenderComponent<Create>();
+
+         // Assert - Check if form elements exist
+         Assert.NotNull(cut.Find("input#name"));
+         Assert.NotNull(cut.Find("input#startdate"));
+         Assert.NotNull(cut.Find("input#enddate"));
+         Assert.NotNull(cut.Find("select#timeincrement"));
+         Assert.NotNull(cut.Find("input#published"));
+         Assert.NotNull(cut.Find("button[type='submit']"));
+      }
+
+      [Fact]
+      public async Task TermsCreate_SubmitForm_TriggersOnValidSubmit()
+      {
+         // Arrange
+         DBUtils.CreateDB(this);
+         var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+         var cut = RenderComponent<Create>();
+
+         // Fill out the form
+         cut.Find("input#name").Change("Spring 2025");
+         cut.Find("input#startdate").Change(new DateOnly(2025, 1, 10));
+         cut.Find("input#enddate").Change(new DateOnly(2025, 5, 20));
+         cut.Find("select#timeincrement").Change(TermTimeIncrement.HalfHour.ToString());
+         cut.Find("input#published").Change(true);
+         cut.Find("button[type='submit']").Click();
+
+         using (var context = contextFactory.CreateDbContext())
+         {
+            var term = await context.Terms.FirstOrDefaultAsync(t => t.Name == "Spring 2025");
+
+            // Note that these asserts must be within the context (most likely due to the asynchronous nature)
+            // Assert - Ensure that form submission is handled correctly
+            Assert.NotNull(term);
+            Assert.Equal("Spring 2025", term.Name);
+            Assert.Equal(new DateOnly(2025, 1, 10), term.StartDate);
+            Assert.Equal(new DateOnly(2025, 5, 20), term.EndDate);
+            Assert.Equal(TermTimeIncrement.HalfHour, term.TimeIncrement);
+            Assert.True(term.Published);
+         }
+      }
+   }
+}

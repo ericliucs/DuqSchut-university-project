@@ -1,0 +1,58 @@
+@page "/tutor/tutorhome"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Tutor,Admin")]
+
+@inject ILogger<TutorHome> Logger
+@inject NavigationManager NavigationManager
+
+
+
+<h3>Welcome, @name</h3>
+<button class="btn btn-primary" @onclick= "Appointments">View Appointments</button>
+<button class="btn btn-primary" @onclick="TutorProfile">View Profile</button>
+
+@code {
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+    private string name = "No name";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Authorized user; proceed
+        try {
+            // https://learn.microsoft.com/en-us/dotnet/architecture/blazor-for-web-forms-developers/security-authentication-authorization#roles-claims-and-policies
+            AuthenticationState authState = await authenticationState; 
+            ClaimsPrincipal user = authState?.User;
+            name = user.FindFirstValue("name");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+
+    }
+
+    private void Appointments()
+    {
+        try{
+            NavigationManager.NavigateTo("/TutorPages/Appointments/Index");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    private void TutorProfile() 
+    {
+        try{
+        NavigationManager.NavigateTo("/tutor/profile/");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

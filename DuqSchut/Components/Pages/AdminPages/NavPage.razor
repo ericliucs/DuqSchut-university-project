@@ -1,0 +1,124 @@
+﻿@page "/admin/NavPage"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@using DuqSchut.Services
+
+@* Obtaining user claims: *@
+@* https://learn.microsoft.com/en-us/dotnet/architecture/blazor-for-web-forms-developers/security-authentication-authorization#roles-claims-and-policies *@
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+
+@attribute [Authorize(Roles = "Admin")]
+
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+
+
+<h3>Welcome, @name</h3>
+<button class="btn btn-primary" @onclick="Semesters">Semesters</button>
+<button class="btn btn-primary" @onclick="TutorProfiles">Tutor Profiles</button>
+<button class="btn btn-primary" @onclick="UserRoles">User Roles</button>
+<button class="btn btn-primary" @onclick="EmailTemplates">Email Templates</button>
+<button class="btn btn-primary" @onclick= "Appointments">View Appointments</button> 
+<button class="btn btn-primary" @onclick="Reports">Reports</button>
+<button class="btn btn-primary" @onclick= "Students">Student Profiles</button> 
+
+@code {
+    // Obtaining user claims:
+    // https://learn.microsoft.com/en-us/dotnet/architecture/blazor-for-web-forms-developers/security-authentication-authorization#roles-claims-and-policies
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+
+    private string name = "No name";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Authorized user; proceed
+        try {
+            var authState = await authenticationState;
+            ClaimsPrincipal user = authState?.User;
+            name = user.FindFirstValue("name");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+
+    }
+    private void Semesters() {
+        try{
+            NavigationManager.NavigateTo("/admin/terms");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+    private void TutorProfiles() {
+        try{
+            NavigationManager.NavigateTo("/tutor/profile/");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    private void UserRoles() {
+        try{
+            NavigationManager.NavigateTo("/admin/users");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+    private void Appointments() {
+        try{
+            NavigationManager.NavigateTo("/admin/appointments");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+
+    private void Reports() {
+        try{
+            NavigationManager.NavigateTo("/admin/reports/create");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    private void EmailTemplates() {
+        try {
+            try{
+        NavigationManager.NavigateTo("/admin/templates");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+    private void Students() {
+        try{
+            NavigationManager.NavigateTo("/admin/students");
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+}

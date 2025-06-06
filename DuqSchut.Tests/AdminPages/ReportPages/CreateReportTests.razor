@@ -1,0 +1,165 @@
+@inherits TestContext
+@using DuqSchut.Models
+@using DuqSchut.Data
+@using DuqSchut.Components.Pages.AdminPages.ReportPages
+@using DuqSchut.Services
+
+@code {
+
+    public class FakeReportDependency : IReportDependency
+    {
+        public MemoryStream GenerateBasicReport(string reportName, List<Appointment> appointments)
+        {
+            // Mock implementation for testing purposes
+            return new MemoryStream(new byte[] { 1, 2, 3 });
+        }
+    }
+    
+    /**
+    <summary>
+        Test that NavPage contains
+        @attribute [Authorize(Roles = "Admin")]
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(CreateReport), 
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+        Test that the page renders correctly and with the correct values
+    </summary>
+    */
+    [Fact]
+    public void ShouldRenderPageCorrectly()
+    {
+        // Arrange: Create a test db and register a fake report service 
+        DBUtils.CreateDB(this);
+        Services.AddSingleton<IReportDependency, FakeReportDependency>();
+        var expectedStartDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-7)).ToString("yyyy-MM-dd");
+        var expectedEndDate = DateTime.Today.ToString("yyyy-MM-dd");
+        
+
+        // Act: Render the component, find all required components
+        var CreateReportPage = RenderComponent<CreateReport>();
+        var dateInputs = CreateReportPage.FindAll("input[type='date']");
+        var generateReportButton = CreateReportPage.Find("button.btn.btn-primary");
+        var backButton = CreateReportPage.Find("a[href='/admin/terms']");
+        
+        // Assert: Check that the page renders correctly and with the correct values
+        Assert.Equal(expectedStartDate, dateInputs[0].GetAttribute("value"));
+        Assert.Equal(expectedEndDate, dateInputs[1].GetAttribute("value"));
+        Assert.Equal(2, dateInputs.Count);
+        Assert.NotNull(generateReportButton);
+        Assert.NotNull(backButton);
+    }
+
+    /**
+    <summary>
+        Test that back button navigates to the correct page clicked.
+    </summary>
+    */
+    [Fact]
+    public void ShouldNavigateBackToNavPage()
+    {
+        // Arrange: Create a test db and register a fake report service 
+        DBUtils.CreateDB(this);
+        Services.AddSingleton<IReportDependency, FakeReportDependency>();
+
+        // Act: render and navigate to the page then find and click the back button
+        var CreateReportPage = RenderComponent<CreateReport>();
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        navManager.NavigateTo("/admin/reports/create");
+        
+        var backButton = CreateReportPage.Find("a[href='/admin/terms']");
+        backButton.Click();
+
+        // Assert: check that the navigation navitor to the correct page
+        Assert.NotNull(backButton);
+        Assert.EndsWith("/admin/NavPage", navManager.Uri);
+    }
+
+    /**
+    <summary>
+        Test that inputDates fields can properly update the values.
+    </summary>
+    */
+    [Fact]
+    public void ShouldChangeDates()
+    {
+        // Arrange: Create a test db and register a fake report service 
+        DBUtils.CreateDB(this);
+        Services.AddSingleton<IReportDependency, FakeReportDependency>();
+        var CreateReportPage = RenderComponent<CreateReport>();
+
+        // Act: render the component, find the date inputs, and update the values
+        var startDateInput = CreateReportPage.Find("input#startDate");
+        var endDateInput = CreateReportPage.Find("input#endDate");
+
+        var newStartDate = "2025-04-12";
+        var newEndDate = "2025-04-20";
+
+        startDateInput.Change(newStartDate);
+        endDateInput.Change(newEndDate);
+
+        // Assert: Check that the values are updated correctly
+        Assert.Equal(newStartDate, startDateInput.GetAttribute("value"));
+        Assert.Equal(newEndDate, endDateInput.GetAttribute("value"));
+    }
+
+    /**
+    <summary>
+        Test that ensures the generate report button works correct and the report is downloaded.
+        more on mocking the JSInterop here: https://bunit.dev/docs/test-doubles/emulating-ijsruntime.html
+        for some reason, when I went to verify the execution of the mock interop it did not work, so I had to
+        verify that the invocation was made by checking the invocations of the JSInterop. This test also assumed 
+        the ReportService is working correctly, as there are other test for that serivce. 
+    </summary>
+    */
+    [Fact]
+    public async Task ShouldGenerateReportAndNavigateToNavPage()
+    {
+        // Arrange: Create a test db, register a fake report service, mock the jsinterop, and create & save dummy appointments
+        JSInterop.SetupVoid("downloadFileFromStream");
+        DBUtils.CreateDB(this);
+        Services.AddSingleton<IReportDependency, FakeReportDependency>();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>(); 
+
+        var appointments = new List<Appointment>
+        {
+            new Appointment { Date = new DateOnly(2025, 4, 12), StartTime = new TimeOnly(9, 0) },
+            new Appointment { Date = new DateOnly(2025, 4, 12), StartTime = new TimeOnly(10, 0) },
+            new Appointment { Date = new DateOnly(2025, 4, 12), StartTime = new TimeOnly(11, 0) },
+            new Appointment { Date = new DateOnly(2025, 4, 12), StartTime = new TimeOnly(12, 0) }
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Appointments.AddRange(appointments);
+            await context.SaveChangesAsync();
+        }
+        
+        // Act: Render the component, find the generate report button, and click it
+        var CreateReportPage = RenderComponent<CreateReport>();
+
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        navManager.NavigateTo("/admin/reports/create");
+
+        var generateReportButton = CreateReportPage.Find("button.btn.btn-primary");
+        generateReportButton.Click();
+
+
+        // Assert the page navigated back to the nav page and that the interop was successfully called
+        Assert.EndsWith("/admin/NavPage", navManager.Uri);
+        var invocations = JSInterop.Invocations;
+        var downloadInvocation = JSInterop.Invocations.FirstOrDefault(i => i.Identifier == "downloadFileFromStream");
+        Assert.Equal("downloadFileFromStream", downloadInvocation.Identifier);
+    }
+}

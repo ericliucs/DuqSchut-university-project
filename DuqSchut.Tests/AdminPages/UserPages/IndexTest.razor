@@ -1,0 +1,25 @@
+@using DuqSchut.Components.Pages.AdminPages.UserPages
+@inherits TestContext
+
+@code
+{
+    [Fact]
+    /**
+     <summary>
+      This tests to see if the title for the user settings page renders correctly.
+     </summary>
+    */
+    public void UserPageTitleContentIsUserSettings()
+    {
+
+
+        DBUtils.CreateDB(this);
+
+        // Arrange
+        var cut = RenderComponent<Components.Pages.AdminPages.UserPages.Index>();
+
+
+    // Assert that content of the title is DuqShut Login
+    cut.Find("h1").TextContent.MarkupMatches("User Settings");
+  }
+}

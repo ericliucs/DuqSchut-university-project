@@ -1,0 +1,33 @@
+﻿@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject NavigationManager NavigationManager
+@inject ILogger<Index> Logger
+@inject IWebHostEnvironment Env
+
+<PageTitle>Home</PageTitle>
+
+<p style="font-size: 24px;">DuqSchut Home Page</p>
+
+<br> <br> <br> <br> <br> 
+
+<h1 style="text-align: center;"> DuqSchut </h1>
+
+<p style="text-align: center;"> <img style="text-align: center;" src="/DuqSchutLogo.png" alt="DuqSchut Home Image" width="230px" length="230px"/> </p>
+
+<p style="text-align: center; font-size: 18px;"> Schedule tutoring help fast! </p>
+
+<button id="go-to-login-button"  class="go-to-login-button" @onclick="GoToLogin">Login</button>
+@code{
+    private void GoToLogin(){
+        try{
+            var path = Env.IsDevelopment() ? "/Login" : "/EntraLogin";
+            NavigationManager.NavigateTo(path); 
+        }catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    
+    }
+    
+}

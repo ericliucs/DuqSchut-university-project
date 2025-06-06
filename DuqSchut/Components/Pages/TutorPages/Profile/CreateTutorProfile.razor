@@ -1,0 +1,670 @@
+@page "/tutor/profile/create" 
+@using System.ComponentModel.DataAnnotations @*Imports data annotation classes for form validation*@
+@inject NavigationManager NavigationManager //Injects the NavigationManager service for page navigation
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<CreateTutorProfile> Logger
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Tutor,Admin")]
+
+
+<PageTitle>Create Your Tutoring Profile</PageTitle>
+
+<h1>Create Your Tutoring Profile</h1>
+
+<EditForm Model="@tutorModel" OnValidSubmit="@(async () => await HandleValidSubmit())" FormName="TutorSchedulingForm">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-layout">
+        <!-- Left Side of Page -->
+        <div class="form-left">
+            <!-- Email -->
+            <div class="form-group">
+                <label for="tutorEmail">Duq Email:</label>
+                <span id="tutorEmail" class="form-control-plaintext">@tutorModel.Email</span>
+            </div>
+
+            <!-- Name -->
+            <div class="form-group">
+                <label for="tutorName">Full Name:</label>
+                <span id="tutorName" class="form-control-plaintext">@tutorModel.Name</span>
+            </div>
+
+            <!-- Term Selection -->
+            <div class="form-group">
+                <label for="termSelect">Select a Term</label>
+                <select id="termSelect" class="form-control" @onchange="OnTermChanged">
+                    <option value="0">Pick a term</option>
+                    @foreach (var term in availableTerms)
+                    {
+                        <option value="@term.ID">@term.Name (@term.StartDate?.ToString("MM/dd/yyyy") - @term.EndDate?.ToString("MM/dd/yyyy"))</option>
+                    }
+                </select>
+            </div>
+
+            <!-- Course Selection -->
+            <div class="form-group">
+                <label for="courseSelect">Select Courses:</label>
+                <select id="courseSelect" @bind="selectedCourse" class="form-control">
+                    <option value="">Select a course</option>
+                    @foreach (var course in availableCoursesForTerm)
+                    {
+                        <option value="@course">@course</option>
+                    }
+                </select>
+                <button type="button" class="btn btn-secondary mt-2" @onclick="AddCourse">Add Course</button>
+            </div>
+
+            <!-- Selected Courses -->
+            <div class="form-group mt-3">
+                <label>Selected Courses (Click a course to remove):</label>
+                <div id="selectedCourses">
+                    @foreach (var course in tutorModel.SelectedCourses)
+                    {
+                        <span class="badge bg-primary me-2 mb-2" style="cursor: pointer;" @onclick="() => RemoveCourse(course)">
+                            @course <span class="oi oi-x"></span>
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side of Page, Calendar -->
+        <div class="form-calendar">
+            <label for="timeSlotSelect">Select Availability:</label>
+            <table @onmouseup="@(() => {DisableScheduleMouse();})" @onmouseleave="@(() => {DisableScheduleMouse();})">
+                <thead>
+                    <tr>
+                        <th>Day</th>
+                        @{
+                            var tempIndex3 = 0;
+                        }
+                        @foreach (var time in termTimes)
+                        {
+                            <th>@getTimeLabel(termTimes[tempIndex3])</th>
+                            tempIndex3++;
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @{
+                        var tempIndex1 = 0;
+                    }
+                    @foreach (var day in calendarDays)
+                    {
+                        int dayIndex = tempIndex1;
+                        <tr>
+                            <td>@termDays[dayIndex]</td>
+                            @{
+                                var tempIndex2 = 0;
+                            }
+                            @foreach (var slot in calendarDays[tempIndex1])
+                            {
+                                int slotIndex = tempIndex2;
+                                <td>
+                                    <div data-test-id="slot-@dayIndex-@slotIndex"
+                                        style="background-color: @getColor(calendarDays[dayIndex][slotIndex]); width: 50px; height: 50px; border: 3px solid rgb(1, 33, 105);"
+                                        @onmousedown="@(() => {FlipScheduleMouse(dayIndex, slotIndex);})"
+                                        @onmouseover="@(() => {FlipScheduleSlot(dayIndex, slotIndex);})">
+                                    </div>
+                                </td>
+                                tempIndex2++;
+                            }
+                        </tr>
+                        tempIndex1++;
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- About Me Section -->
+    <div class="aboutme">
+        <label for="aboutMe">About Me:</label>
+        <InputTextArea id="aboutMe" @bind-Value="tutorModel.AboutMe" class="form-control" rows="4" />
+        <ValidationMessage For="@(() => tutorModel.AboutMe)" class="custom-validation-message" />
+    </div>
+
+    <!--Photo Upload section-->
+    <h3>Upload Photo</h3>
+    <div style="margin-bottom: 20px; display: flex;">
+        <div>Select your file:</div>
+        <InputFile OnChange="FileUploaded" accept="image/jpeg,image/png" />
+    </div>
+
+    @if (photoErrors.Count > 0)
+    {
+        @foreach (var error in photoErrors)
+        {
+            <div style="color:red;">@error</div>
+        }
+    }
+
+    <div>
+        <a href="/tutorprofiles">Back to List</a>
+    </div>
+
+    <!-- Cancel and Submit buttons -->
+    <div class="button-group">
+        <button type="button" class="btn btn-secondary mt-4" @onclick="Cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary mt-4">Submit For Approval</button>
+    </div>
+
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error">
+            @errorMessage
+        </div>
+    }
+</EditForm>
+
+@code {
+    private string ErrorMessage = string.Empty;//for photo upload
+    const int MAX_FILESIZE = 5 * 1024 * 1024; // 5MB
+
+    private TutorModel tutorModel = new TutorModel(); // Initializes a new TutorModel instance
+    private string selectedCourse = ""; // Stores the string of currently selected course
+    private List<Term> availableTerms = new(); // List to store available terms
+    private int selectedTermID; // Store ID of selected term
+    private List<string> availableCoursesForTerm = new List<string>(); // List to store available courses for selected term
+    private List<byte[]> calendarDays = new List<byte[]>(); // List to store each calendar slot's value
+    private List<int> termTimes = new List<int>(); // List to store the times displayed in the head of the calendar
+    private List<string> termDays = new List<string>(); // List to store the days displayed for each row of the calendar
+	private bool mouseDown = false; // Boolean used specifically when the mouse is interacting with the schedule
+    private List<int> swaps = new(); // Creating a list to store the index of each slot where it switches between 0 and 1
+    private double tempStart = 0; // Start time for each slot in FakeBlock
+    private double tempEnd = 0; // End time for each slot in FakeBlock
+    private string errorMessage = ""; // Error Message
+    private List<string> photoErrors = new(); // List to store any file upload errors
+
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+
+    /// <summary>
+    /// Method <c>AddCourse</c> Adds selected course to Tutor Model
+    /// </summary>
+    /// <returns></returns>
+    private void AddCourse()
+    {
+        try{
+            if (!string.IsNullOrEmpty(selectedCourse) && !tutorModel.SelectedCourses.Contains(selectedCourse)) // Checks if a course is selected and not already added
+            {
+                tutorModel.SelectedCourses.Add(selectedCourse); // Adds the selected course to the tutor's courses
+                availableCoursesForTerm.Remove(selectedCourse); // Removes the course from available courses
+                selectedCourse = ""; // Resets the selected course
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Add Course");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>RemoveCourse</c> Removes selected course from Tutor Model
+    /// </summary>
+    /// <param name="course">The selected course being removed</param>
+    /// <returns></returns>
+    private void RemoveCourse(string course)
+    {
+        try{
+            tutorModel.SelectedCourses.Remove(course); // Removes the course from the tutor's courses
+            availableCoursesForTerm.Add(course); // Adds the course back to available courses
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Remove Course");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>GenerateTableSlots</c> Generates the slots used by the calendar
+    /// </summary>
+    /// <param name="numSlots"> number of Time Slots to be generated per row </param>
+    private void GenerateTableSlots(int numSlots) 
+    {
+        calendarDays.Add(new byte[numSlots]);
+        for(int j=0;j<numSlots;j++) {
+            calendarDays[calendarDays.Count()-1][j] = 0;
+        }
+    }
+
+    /// <summary>
+    /// Method <c>getTimeLabel</c> Converts the slot's time into the timecode it should display
+    /// </summary>
+    /// <param name="timeNum">The number being converted</param>
+    /// <returns>The time for the slot</returns>
+    private string getTimeLabel(int timeNum) {
+        if(timeNum%2 == 0) {
+            if(timeNum > 25) {
+                return (timeNum/2)%12 + ":00";
+            }
+            return timeNum/2 + ":00";
+        }
+        else if (timeNum > 25) {
+            return (timeNum/2)%12 + ":" + (timeNum%2)*30;
+        }
+        return timeNum/2 + ":" + (timeNum%2)*30;
+    }
+
+    /// <summary>
+    /// Method <c>getColor</c> Converts the status of the block from the calendar into the color it should display
+    /// </summary>
+    /// <param name="slotVal">The number being converted</param>
+    /// <returns>The color of the slot</returns>
+    private string getColor(int slotVal) {
+        switch(slotVal) {
+            case 0:
+                return "gray";
+            
+            case 1:
+                return "blue";
+            
+            default:
+                return "";
+        }
+        
+    }
+
+    /// <summary>
+    /// Method <c>DisableScheduleMouse</c> Disables mouse activity from the calendar if it leaves or is unpressed
+    /// </summary>
+    void DisableScheduleMouse() 
+    {
+        mouseDown = false;
+    }
+
+    //// <summary>
+    /// Method <c>FlipScheduleMouse</c> Activates and deactivates the mouse and flips the slot being clicked on if activating
+    /// </summary>
+    /// <param name="i">The row of the slot</param>
+    /// <param name="j">The column of the slot</param>
+    void FlipScheduleMouse(int i, int j) 
+    {
+        if(mouseDown) {
+            mouseDown = !mouseDown;
+        }
+        else {
+            mouseDown = !mouseDown;
+            FlipScheduleSlot(i, j);
+        }
+    }
+
+    /// <summary>
+    /// Method <c>FlipScheduleSlot</c> Flips the slot being clicked on or moused over if the mouse is held down
+    /// </summary>
+    /// <param name="i">The row of the slot</param>
+    /// <param name="j">The column of the slot</param>
+    void FlipScheduleSlot(int i, int j) 
+    {
+        if(mouseDown) {
+            //Flips the slot to being Unavailable or Available for this context
+            switch (calendarDays[i][j]) {
+                case 0:
+                    calendarDays[i][j] = 1;
+                    break;
+                
+                case 1:
+                    calendarDays[i][j] = 0;
+                    break;
+                
+                
+                default:
+                    break;
+            }
+        }
+        
+    }
+
+    /// <summary>
+    /// Method <c>HandleValidSubmit</c> Updates Database using Tutor Model data
+    /// </summary>
+    /// <returns></returns>
+    private async Task HandleValidSubmit()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+
+            //no term is selected, submission is prevented
+            if (selectedTermID == 0)
+            {
+                errorMessage = "Please select a Term";
+                return;
+            }
+
+            //Check if profile already exists for term:
+            var existingProfile = await context.TutorProfiles.FirstOrDefaultAsync(
+                t => t.UserID == tutorModel.Email && t.TermID == selectedTermID);
+
+            if(existingProfile != null)
+            {
+                errorMessage = "You already have a profile for this term";
+                return;
+            }
+
+            // Fetch selected term from the database that matches the selected term ID
+            var selectedTerm = await context.Terms.FindAsync(selectedTermID);
+
+            // Creates a Tutor Profile based on data entered on the form
+            var profile = new TutorProfile{
+                UserID = tutorModel.Email,
+                TermID = selectedTermID,
+                AboutMe = tutorModel.AboutMe,
+                Approved = false,
+                Courses = new List<TutorCourse>(),
+                RegularSchedule = new List<TutorScheduleBlock>(),
+                UserPhoto = tutorModel.photo
+                
+            };
+
+
+            // Iterates through selected courses and adds them to the Tutor Profile
+            foreach (var course in tutorModel.SelectedCourses)
+            {
+                // Creates Tutor Course Object
+                var tutorCourse = new TutorCourse
+                {
+                    TutorProfileUserID = tutorModel.Email,
+                    TermID = selectedTermID,
+                    Course = course,
+                };
+
+                profile.Courses.Add(tutorCourse);
+            }
+
+            // Algorithm to convert calendar data into FakeBlocks
+            for(int i=0;i<calendarDays.Count();i++)
+            {
+                // Adds first slot
+                swaps.Add(0);
+                // Adds each slot where the value switches from 0 to 1
+                for(int j=1;j<calendarDays[i].Count();j++)
+                {
+                    if(calendarDays[i][j] != calendarDays[i][j-1])
+                    {
+                        swaps.Add(j);
+                    }
+                }
+                // Adds last slot
+                swaps.Add(calendarDays[i].Count());
+                // Iterates through each set of selected slots and converts them to FakeBlocks
+                for(int j=1;j<swaps.Count();j++)
+                {
+                    tempStart = (double)(swaps.ElementAt(j-1) + 18)/2;
+                    tempEnd = (double)(swaps.ElementAt(j) + 18)/2;
+                    switch(calendarDays[i][swaps.ElementAt(j-1)]) {
+                        case 0:
+                            tutorModel.SelectedTimeSlots.Add(new FakeBlock(i*100 +j,termDays[i],tempStart,tempEnd,false));
+                            break;
+
+                        case 1:
+                            tutorModel.SelectedTimeSlots.Add(new FakeBlock(i*100 +j,termDays[i],tempStart,tempEnd,true));
+                            break;
+                        
+                        default:
+                            break;
+                    }
+                }
+                swaps.Clear(); // Clearing each list to not conflict with the next row of data
+            }
+
+            foreach (var timeSlot in tutorModel.SelectedTimeSlots)
+            {
+                // Fetches the schedule block from the database that matches the selected time slot ID
+                //int timeSlotID = int.Parse(timeSlot.Split(' ')[0]);
+                //var ScheduleBlock = await context.TermScheduleBlocks.FirstOrDefaultAsync(t => t.ID == timeSlotID);
+
+                var finalDay = (DaysOfWeek)Enum.Parse(typeof(DaysOfWeek), timeSlot.getDay());
+
+                // Creates Tutor Schedule Block Object
+                var scheduleBlock = new TutorScheduleBlock
+                {
+                    //ID = timeSlot.getBlockID(),
+                    DayOfWeek = finalDay,
+                    StartTime = new TimeOnly((int)timeSlot.getStartTime(), (int)((timeSlot.getStartTime()*60)%60)),
+                    EndTime = new TimeOnly((int)timeSlot.getEndTime(), (int)((timeSlot.getEndTime()*60)%60)),
+                    Location = "",
+                    TutorProfileID = profile.ID,
+                    isActive = timeSlot.getActive()
+                };
+
+                profile.RegularSchedule.Add(scheduleBlock);
+            }
+
+            // Reset error message
+            errorMessage = "";
+
+            // Adds Tutor Profile to database
+            context.TutorProfiles.Add(profile);
+            await context.SaveChangesAsync();
+
+            // Navigates to the Tutor Profile View page
+            NavigationManager.NavigateTo("/tutor/profile/" );
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Submit form");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>OnInitializedAsync</c> Fetches available terms from the database
+    /// Also fetches name and email from Authentication State
+    /// </summary>
+    /// <returns></returns>
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+
+            // Fetches available terms from the database
+            availableTerms = await context.Terms.Where(t => t.Published)
+                .OrderByDescending(t => t.StartDate)
+                .ToListAsync();
+
+            // Fetches the current user's email and name from the Authentication State
+            var authState = await authenticationState;
+            ClaimsPrincipal user = authState?.User;
+            tutorModel.Name = user.FindFirstValue("name");
+            tutorModel.Email = user.FindFirstValue("email");
+            tutorModel.photo = null;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Load available terms");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>OnTermChanged</c> Fetches available courses from database based on selected Term
+    /// </summary>
+    /// <param name="e">This is a ChangeEventsArgs object used to detect event changes</param>
+    /// <returns></returns>
+    private async Task OnTermChanged(ChangeEventArgs e)
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+            tutorModel.photo = null;
+            // Parses Selected Term ID from event args.
+            selectedTermID = int.Parse(e.Value.ToString());
+            // Clears selected courses and time slots that User has selected
+            tutorModel.SelectedCourses.Clear();
+            tutorModel.SelectedTimeSlots.Clear();
+            // Clears the data used for the calendar
+            calendarDays.Clear();
+            termTimes.Clear();
+            termDays.Clear();
+
+            if (selectedTermID != 0)
+            {
+                // Fetch the courses for the selected term from the database
+                availableCoursesForTerm = await context.TermCourses
+                    .Where(tc => tc.TermID == selectedTermID)
+                    .Select(tc => tc.Course)
+                    .ToListAsync();
+
+                // Fetch the schedule blocks for the selected term from the database
+                var availableScheduleBlocks = await context.TermScheduleBlocks
+                    .Where(ts => ts.TermID == selectedTermID)
+                    .ToListAsync();
+
+                // Take the info from each term schedule block and use it to initialize that term's calendar
+                int termStart = (availableScheduleBlocks.Select(ts => ts.StartTime.Hour).ElementAt(0)
+                + availableScheduleBlocks.Select(ts => ts.StartTime.Minute).ElementAt(0)/60) * 2;
+                int termEnd = (availableScheduleBlocks.Select(ts => ts.EndTime.Hour).ElementAt(0)
+                + availableScheduleBlocks.Select(ts => ts.EndTime.Minute).ElementAt(0)/60) * 2;
+                for(int i=termStart;i<termEnd;i++)
+                {
+                    termTimes.Add(i);
+                }
+                int termBlockNumber = termEnd-termStart;
+                foreach (var block in availableScheduleBlocks.Select(ts => ts.DayOfWeek)) 
+                {
+                    GenerateTableSlots(termBlockNumber);
+                    string termWeekDay = block.ToString();
+                    termDays.Add(termWeekDay);
+                }
+            }
+            else
+            {
+                // Clears list of available courses and time slots if no term is selected
+                availableCoursesForTerm.Clear();
+                //availableTimeSlotsForTerm.Clear();
+            }
+        }
+        catch (Exception error)
+        {
+            Logger.LogError(error, "Failed to obtain list of available courses or time slots");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>Cancel</c> Cancels Create and Navigates to Tutor Profile View page
+    /// </summary>
+    public void Cancel()
+    {
+        try{
+            NavigationManager.NavigateTo("/tutor/profile/");
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Cancel");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary> 
+    /// upload a file using file explorer
+    /// <summary>
+    public async Task FileUploaded(InputFileChangeEventArgs e)
+    {
+        // get rid of any errors from previous upload attempts
+        photoErrors.Clear();
+
+        var browserFile = e.File;
+
+        if (browserFile is not null)
+        {
+
+            try
+            {
+                //converts the file to a byte array for storage
+                using var stream = browserFile.OpenReadStream(MAX_FILESIZE);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                tutorModel.photo = ms.ToArray();
+            }
+            catch (Exception ex)
+            {
+                photoErrors.Add($"File: {browserFile.Name} Error: {ex.Message}");
+                Logger.LogError(ex, "Error uploading file");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Class <c>TutorModel</c> Stores data from form for Tutor Profile
+    /// </summary>
+    public class TutorModel
+    {
+        public string Name { get; set; }
+        public string Email { get; set; }
+
+        // Required Validation for Course Selection
+        [MinLength(1, ErrorMessage = "Please select at least one course")]
+        public List<string> SelectedCourses { get; set; } = new List<string>();
+        
+        // Required Validation for Time Slot Selection
+        //[MinLength(1, ErrorMessage = "Please select at least one Time Slot")]
+        public List<FakeBlock> SelectedTimeSlots { get; set; } = new List<FakeBlock>();
+
+        //Required Validation for About Me Section
+        [Required(ErrorMessage = "Please provide some information about yourself")]
+        [MinLength(1, ErrorMessage = "Please provide at least 1 characters")]
+
+         // Property for "About Me" information
+        public string AboutMe { get; set; }
+        public byte[] photo {get; set; }
+    }
+
+    /// <summary>
+    /// Class <c>FakeBlock</c> Stores data from each block in the calendar
+    /// </summary>
+    public class FakeBlock
+    {
+        private int blockID;
+        private string day;
+        private double startTime;
+        private double endTime;
+        private bool activeSlots;
+        public FakeBlock(int id, string d, double start, double end, bool a) {
+            blockID = id;
+            day = d;
+            startTime = start;
+            endTime = end;
+            activeSlots = a;
+
+        }
+        public int getBlockID() {
+            return blockID;
+        }
+        public void setBlockID(int id) {
+            blockID = id;
+        }
+        public string getDay() {
+            return day;
+        }
+        public void setDay(string d) {
+            day = d;
+        }
+        public double getStartTime() {
+            return startTime;
+        }
+        public void setStartTime(double start) {
+            startTime = start;
+        }
+        public double getEndTime() {
+            return endTime;
+        }
+        public void setEndTime(double end) {
+            endTime = end;
+        }
+        public bool getActive() {
+            return activeSlots;
+        }
+        public void setActive(bool a) {
+            activeSlots = a;
+        }
+
+
+        
+    }
+}

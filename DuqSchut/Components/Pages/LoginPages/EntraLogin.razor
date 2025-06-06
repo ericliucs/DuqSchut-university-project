@@ -1,0 +1,57 @@
+@page "/EntraLogin"
+
+@using DuqSchut.Services
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+
+
+@* 
+Include the following line to ensure that the user is logged in via Multipass so 
+that an authentication state object will be available to which CustomClaimsTransformation
+can add a role claim. 
+*@
+@attribute [Authorize]
+
+@code {
+
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+
+    /**
+     <summary>
+      This method will be executed after the user has authenticated via
+      Multipass and their role claim has been added to authentication state
+      by CustomClaimsTransformation. This method 
+      navigates to the correct landing page for this user based on their role. 
+     </summary>
+    */
+    protected override async Task OnInitializedAsync()
+    {
+        ClaimsPrincipal user = default;
+        string landingURL = default;
+        try {
+            // Retrieve the user's ClaimsPrincipal and use it to determine the
+            // correct landing page
+            var authState = await authenticationState;
+            user = authState?.User;
+            landingURL = LoginUtils.MapRoleToLandingURL(user);
+            var userID = user.FindFirstValue("email");
+            var userName = user.FindFirstValue("name");
+
+
+            // TODO: If this user is not in the database, add them as a Student.
+            await LoginUtils.AddUserToDatabaseIfNotExistsAsync(userID , userName , DbFactory);
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+
+        // Navigate to the appropriate landing page (or Error)
+        NavigationManager.NavigateTo(landingURL);
+    }
+}   
+

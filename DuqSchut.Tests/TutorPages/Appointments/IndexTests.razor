@@ -1,0 +1,75 @@
+@using DuqSchut.Components.Pages.TutorPages.Appointments
+@using System.Security.Claims
+@using DuqSchut.Services
+
+@inherits TestContext
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Data
+@using DuqSchut.Models
+
+@inject IAppointmentService AppointmentService
+
+@code {
+
+    /**
+   <summary>
+    Test that TutorPages.Appointments.Index contains
+    @attribute [Authorize(Roles = "Tutor")]
+   </summary>
+  */
+    [Fact]
+    public void OnlyTutorIsAuthorized()
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(DuqSchut.Components.Pages.TutorPages.Appointments.Index),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor",actual.Roles);
+    }
+
+
+    /**
+     <summary>
+        This tests to see if the content of the first h1 tag is Upcoming Appointments for Index page.
+     </summary>
+    */
+    [Fact]
+    public void TutAppH1ContentIsUpcomingAppointments_Service()
+    {
+        // Register Appointment Service
+        Services.AddSingleton<IAppointmentService, AppointmentService>();
+
+        // Insert test user with Tutor appointments only
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetClaims(
+            new Claim("name", "TEST USER"),
+            new Claim("email", "testuser@duq.edu")
+        );
+
+        // Arrange: Create empty DB and render Index component
+        DBUtils.CreateDB(this);
+        var context = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>().CreateDbContext();
+        
+        context.Users.Add(new User 
+        {
+            ID = "testuser@duq.edu",
+            FirstName = "Test", 
+            LastName = "User", 
+            AppointmentsAsTutor = new List<Appointment> 
+                {
+                    new Appointment { ID = 1, Purpose = "Test Appointment"}
+                }
+        });
+        context.SaveChanges();
+
+        // Act
+        var cut = RenderComponent<DuqSchut.Components.Pages.TutorPages.Appointments.Index>();
+
+        // Assert that content of the title is user's Upcoming Appointments
+        cut.Find("h1").TextContent.MarkupMatches("TEST USER's Upcoming Appointments");
+
+    }
+
+
+}

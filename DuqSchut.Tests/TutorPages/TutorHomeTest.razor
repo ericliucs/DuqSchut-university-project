@@ -1,0 +1,107 @@
+@using DuqSchut.Components.Pages.StudentPages
+@using DuqSchut.Components.Pages.TutorPages
+@inherits TestContext
+@using System.Security.Claims
+
+@code
+{
+    // The following test is based on https://github.com/bUnit-dev/bUnit/discussions/448.
+  /**
+   <summary>
+    Test that TutorHome contains
+    @attribute [Authorize(Roles = "Tutor,Admin")]
+   </summary>
+  */
+  [Fact]
+    public void TutorsAndAdminAreAuthorized() 
+    {
+        var actual = Attribute.GetCustomAttribute(
+          typeof(TutorHome), 
+          typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor,Admin", actual.Roles);
+    }
+
+
+    [Fact]
+    /**
+      <summary>
+        This tests to see if the tutor's navigation buttons exist.
+      </summary>
+    */
+    public void TutorHome_Buttons_Exists()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing(); // needed b/c page has <AuthorizeView>
+        var cut = RenderComponent<TutorHome>();
+
+        var buttons = cut.FindAll("button.btn-primary");
+
+        // Assert that all buttons (modifible) are present
+        Assert.Equal(2, buttons.Count);
+        Assert.Contains(buttons, btn => btn.TextContent.Trim() == "View Appointments");
+        Assert.Contains(buttons, btn => btn.TextContent.Trim() == "View Profile");
+    }
+
+    [Fact]
+    /**
+      <summary>
+        This tests to see that the TutorHome buttons links 
+      </summary>
+    */
+    public void AppointmentsButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing();
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<TutorHome>();
+        // Act
+        cut.FindAll("button.btn-primary")[0].Click(); // Click View Appointments button
+
+        // Assert
+        Assert.EndsWith("/TutorPages/Appointments/Index" , mockNavManager.Uri);
+    }
+
+    /**
+      <summary>
+        This tests to see that the TutorHome buttons links 
+      </summary>
+    */
+    [Fact]
+    public void TutorProfileButton_Should_Navigate_Correctly()
+    {
+        // Arrange
+        this.AddTestAuthorization().SetAuthorizing();
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var cut = RenderComponent<TutorHome>();
+
+        // Act
+        cut.FindAll("button.btn-primary")[1].Click(); // Click Tutor Profiles button
+
+        // Assert
+        Assert.EndsWith("/tutor/profile/" , mockNavManager.Uri);
+    }
+
+    /**
+      <summary>
+        This tests to see that the page displays the user's name from its authentication
+      </summary>
+    */
+    [Fact]
+    public void DisplaysAuthenticatedUsersName()
+    {
+        //Arrange
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex")
+        );
+
+        //Act
+        var cut = RenderComponent<TutorHome>();
+
+        var welcome = cut.Find("h3").TextContent;
+
+        //Assert
+        Assert.Contains("Welcome, Alex", welcome);
+    }
+}

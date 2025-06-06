@@ -1,0 +1,46 @@
+@page "/admin/users"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@using Microsoft.AspNetCore.Components.QuickGrid
+@implements IAsyncDisposable
+@inject IDbContextFactory<DuqSchutContext> DbFactory
+
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>User Settings</PageTitle>
+
+<h1>User Settings</h1>
+
+
+
+<QuickGrid Class="table" Items="context.Users">
+    <PropertyColumn Property="user => user.FirstName" />
+    <PropertyColumn Property="user => user.LastName" />
+    <PropertyColumn Property="user => user.Role" />
+
+    <TemplateColumn Context="user">
+        <a href="@($"admin/users/edit?id={user.ID}")">Edit</a> |
+        <a href="@($"admin/users/details?id={user.ID}")">Details</a> |
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private DuqSchutContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        try {
+            context = DbFactory.CreateDbContext();
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+
+    public async ValueTask DisposeAsync() => 
+        await (context?.DisposeAsync() ?? ValueTask.CompletedTask);
+}

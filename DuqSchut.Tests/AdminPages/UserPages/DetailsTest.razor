@@ -1,0 +1,25 @@
+@using DuqSchut.Components.Pages.AdminPages.UserPages
+@inherits TestContext
+
+@code
+{
+  [Fact]
+  /**
+   <summary>
+      This tests to see if the title for the user details page renders correctly.
+   </summary>
+  */
+  public void UserDetailsTitleContentIsUserSettings()
+  {
+    
+    DBUtils.CreateDB(this);
+
+
+    // Arrange
+    var cut = RenderComponent<Details>();
+
+    // Assert that content of the title is Sign into DuqSchut
+    cut.Find("h1").TextContent.MarkupMatches("Details");
+  }
+  
+}

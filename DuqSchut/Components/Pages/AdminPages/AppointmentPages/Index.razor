@@ -1,0 +1,42 @@
+@page "/admin/appointments"
+@using DuqSchut.Components.Shared.Appointments
+@using DuqSchut.Services
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Index> Logger
+@inject AppointmentService AppointmentService
+@inject IAppointmentService AppointmentService
+@implements IAsyncDisposable
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<SharedIndex UserAppointments="@context.Appointments"
+                  CanEdit="true"
+                  DetailsRoute="admin/appointments/details"
+                  EditRoute="admin/appointments/edit"
+                  DeleteRoute="admin/appointments/delete" />
+
+@code {
+    private DuqSchutContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        try{
+            context = DbFactory.CreateDbContext();
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    public async ValueTask DisposeAsync() => 
+        await (context?.DisposeAsync() ?? ValueTask.CompletedTask);
+
+}

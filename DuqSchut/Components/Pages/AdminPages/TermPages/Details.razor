@@ -1,0 +1,84 @@
+@page "/admin/terms/details"
+
+@using DuqSchut.Components.Shared.TermPages
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<Details> Logger
+@inject NavigationManager NavigationManager
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Term Details</PageTitle>
+
+<h1 class="mb-3">Term Details</h1>
+<hr />
+
+@if (term is null)
+{
+    <p class="text-muted"><em>Loading...</em></p>
+}
+else
+{
+    <div class="card p-4 shadow-sm">
+        <h2 class="mb-3">Term Information</h2>
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">Name</dt>
+            <dd class="col-sm-8">@term.Name</dd>
+            
+            <dt class="col-sm-4 font-weight-bold">Start Date</dt>
+            <dd class="col-sm-8">@term.StartDate?.ToShortDateString()</dd>
+            
+            <dt class="col-sm-4 font-weight-bold">End Date</dt>
+            <dd class="col-sm-8">@term.EndDate?.ToShortDateString()</dd>
+            
+            <dt class="col-sm-4 font-weight-bold">Time Increment</dt>
+            <dd class="col-sm-8">@term.TimeIncrement</dd>
+            
+            @* <dt class="col-sm-4 font-weight-bold">Max Hours Tutees Allowed</dt>
+            <dd class="col-sm-8">@term.MaxHoursTuteesAllowed</dd>
+            
+            <dt class="col-sm-4 font-weight-bold">Min Tutor Weekly Hours</dt>
+            <dd class="col-sm-8">@term.MinTutorWeeklyHours</dd>
+            
+            <dt class="col-sm-4 font-weight-bold">Max Tutor Weekly Hours</dt>
+            <dd class="col-sm-8">@term.MaxTutorWeeklyHours</dd> *@
+        </dl>
+        
+        <dt class="col-sm-4 font-weight-bold">Courses</dt>
+        <dd class="col-sm-8"><DisplayCourses CurrentTerm="term"></DisplayCourses></dd>
+        <dl class="row">
+            <dt class="col-sm-4 font-weight-bold">Published</dt>
+            <dd class="col-sm-8">@(term.Published ? "Yes" : "No")</dd>
+        </dl>
+    </div>
+    
+    <div class="mt-4">
+        <a class="btn btn-primary me-2" href="@($"/admin/terms/edit?id={term.ID}")">Edit</a>
+        <a class="btn btn-secondary" href="@($"/admin/terms")">Back to List</a>
+    </div>
+}
+
+
+@code {
+    #nullable enable
+    private Term? term;
+    #nullable disable
+    
+    [SupplyParameterFromQuery]
+    public int ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            using var context = DbFactory.CreateDbContext();
+            term = await context.Terms.Include(t => t.Courses).FirstOrDefaultAsync(m => m.ID == ID);
+
+            if (term is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

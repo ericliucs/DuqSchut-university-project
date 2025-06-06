@@ -1,0 +1,74 @@
+@page "/admin/terms"
+
+@implements IAsyncDisposable
+@inject ILogger<Index> Logger
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+<!-- Using the Radzen.Blazor package to add a new grid component -->  
+@using Radzen
+@using Radzen.Blazor
+<!-- Added to make the RadzenDataGrid table interactable  -->
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Index</PageTitle>
+
+<!-- Styling to go along with the new grid component --> 
+<!-- Radzen CSS -->
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css">
+
+<h1>Terms</h1>
+
+<p>
+    <a href="/admin/terms/create">Create New Term</a>
+</p>
+
+<div style="width: 100%; overflow-x: auto;">
+    <!-- Updated the QuickGrid layout to the RadzenDataGrid IQueryable component -->
+    <RadzenDataGrid TItem="Term" Data="@context.Terms.OrderByDescending(terms => terms.StartDate)" AllowFiltering="false" FilterMode="FilterMode.Advanced" AllowColumnResize="true" AllowAlternatingRows="false" 
+        AllowSorting="true" AllowPaging="true" PagerHorizontalAlign="HorizontalAlign.Left" ShowPagingSummary="true" LogicalFilterOperator="LogicalFilterOperator.Or" 
+        SelectionMode="DataGridSelectionMode.Single" PageSize="5" ColumnWidth="auto" >
+
+        <Columns>
+            <RadzenDataGridColumn TItem="Term" Property="Name" Title="Name" Frozen="true" TextAlign="TextAlign.Center"/>
+            <RadzenDataGridColumn TItem="Term" Property="StartDate" Title="Start Date" TextAlign="TextAlign.Center"/>
+            <RadzenDataGridColumn TItem="Term" Property="EndDate" Title="End Date" TextAlign="TextAlign.Center"/>
+            <RadzenDataGridColumn TItem="Term" Property="TimeIncrement" Title="Time Increment" TextAlign="TextAlign.Center"/>
+            @* <RadzenDataGridColumn TItem="Term" Property="MaxHoursTuteesAllowed" Title="Max Tutee Hours" TextAlign="TextAlign.Center"/>
+            <RadzenDataGridColumn TItem="Term" Property="MinTutorWeeklyHours" Title="Min Tutor Weekly Hours" TextAlign="TextAlign.Center"/>
+            <RadzenDataGridColumn TItem="Term" Property="MaxTutorWeeklyHours" Title="Max Tutor Weekly Hours" TextAlign="TextAlign.Center"/> *@
+            <RadzenDataGridColumn TItem="Term" Property="Published" Title="Published" TextAlign="TextAlign.Center"/>
+
+            <RadzenDataGridColumn TItem="Term" Title="Actions" Width="180px">
+                <Template Context="term">
+                    <a href="@($"/admin/terms/edit?id={term.ID}")">Edit</a> |
+                    <a href="@($"/admin/terms/details?id={term.ID}")">Details</a> |
+                    <a href="@($"/admin/terms/delete?id={term.ID}")">Delete</a>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+</div>
+
+@code {
+    private DuqSchutContext context = default!;
+    private IQueryable<Term> terms = Enumerable.Empty<Term>().AsQueryable();
+
+    protected override void OnInitialized()
+    {
+        try {
+            context = DbFactory.CreateDbContext();
+            terms = context.Terms.AsQueryable();
+        } catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    public async ValueTask DisposeAsync() => 
+        await (context?.DisposeAsync() ?? ValueTask.CompletedTask);
+}
+
+<!-- Radzen JavaScript -->
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>

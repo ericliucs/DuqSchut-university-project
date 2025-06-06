@@ -1,0 +1,97 @@
+@page "/admin/reports/create"
+
+@using DuqSchut.Services
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<CreateReport> Logger
+@inject NavigationManager NavigationManager
+@inject IReportDependency ReportGenerator
+@inject IJSRuntime JS
+@attribute [Authorize(Roles = "Admin")]
+
+
+
+<PageTitle>Reports</PageTitle>
+
+<h2>Reports</h2>
+
+<div>
+    <label>Start Date:</label>
+    <InputDate id="startDate" @bind-Value="StartDate" />
+</div>
+<p></p>
+<div>
+    <label>End Date:</label>
+    <InputDate id="endDate" @bind-Value="EndDate" />
+</div>
+<p></p>
+<div>
+    <button class="btn btn-primary" @onclick="GenerateReport">Generate Report</button>
+</div>
+<p></p>
+<div>
+    <a href="/admin/terms" @onclick="NavigateToAdmin">Back to Admin Page</a>
+</div>
+
+
+@code {
+    private DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(-7)); // Default to 7 days ago
+    private DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);  // Default to today
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+    
+    private async Task GenerateReport()
+    {
+        try
+        {
+            // get all appointments between the inputted start and end date
+            using var context = DbFactory.CreateDbContext();
+            List<Appointment> appointments = context.Appointments
+                .Where(a => a.Date >= StartDate && a.Date <= EndDate)
+                .ToList();
+
+            // generate the report and store it in the memory stream (the name of the file is summary_report_date.xlsx)
+            string fileName = $"summary_report_{DateTime.Today:yyyy:MM:dd}.xlsx";
+            MemoryStream stream = ReportGenerator.GenerateBasicReport("Summary Report", appointments);
+            
+            // download the file to the client (see the below JS code for downloadFileFromStream)
+            using var streamRef = new DotNetStreamReference(stream: stream);
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
+            
+            Logger.LogInformation($"Generating report from {StartDate} to {EndDate}");
+
+            NavigationManager.NavigateTo("/admin/NavPage");
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Error generating report");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    private void NavigateToAdmin()
+    {
+        NavigationManager.NavigateTo("/admin/NavPage");
+    }
+}
+
+@* 
+more on this found here, specifically the first section called Download from a stream
+https://learn.microsoft.com/en-us/aspnet/core/blazor/file-downloads?view=aspnetcore-9.0 
+*@
+<script>
+    window.downloadFileFromStream = async (fileName, contentStreamReference) => {
+        const arrayBuffer = await contentStreamReference.arrayBuffer();
+        const blob = new Blob([arrayBuffer]);
+        const url = URL.createObjectURL(blob);
+        const anchorElement = document.createElement('a');
+        anchorElement.href = url;
+        anchorElement.download = fileName ?? '';
+        anchorElement.click();
+        anchorElement.remove();
+        URL.revokeObjectURL(url);
+    };
+</script>

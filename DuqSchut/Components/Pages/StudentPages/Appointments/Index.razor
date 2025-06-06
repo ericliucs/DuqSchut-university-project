@@ -1,0 +1,59 @@
+@page "/student/appointments"
+@using DuqSchut.Components.Shared.Appointments
+@using DuqSchut.Services
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Index> Logger
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize]
+
+<PageTitle>Index</PageTitle>
+
+<h1>Hello @userName</h1>
+<p>
+    <a href="student/appointments/StudentCreateAppointment">Create New</a>
+</p>
+
+<SharedIndex UserAppointments="@UserAppointments"
+                  CanEdit="true"
+                  DetailsRoute="student/appointments/details"
+                  EditRoute="student/appointments/edit"
+                  DeleteRoute="student/appointments/delete" />
+
+@code {
+
+    [Inject] 
+    IAppointmentService AppointmentService { get; set; }
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+    private IQueryable<Appointment> UserAppointments;
+
+    private string userID = "";
+    private string userName = "No name";
+
+    // This method populates the database on initialization
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            var authState = await authenticationState;
+            var user = authState.User;
+
+            userID = user.FindFirstValue("email") ?? "";
+            userName = user.FindFirstValue("name") ?? "";
+
+            if (user.IsInRole("Student")) 
+            {
+                UserAppointments = await AppointmentService.GetAppointmentsForUserAsync("Student", userID);
+            }
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+        
+    }
+}

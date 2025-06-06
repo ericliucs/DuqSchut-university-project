@@ -1,0 +1,437 @@
+@inherits TestContext
+@using DuqSchut.Components.Pages.TutorPages.Profile
+
+@code {
+
+    /**
+    <summary>
+     Ensure that only users that are admins have access to the ViewTutorProfile page
+    </summary>
+    */
+    [Fact]
+    public void OnlyTutorAndAdminAreAuthorized()
+    {
+        // Arrange: Retrieve the authorize attribute from ViewAllProfiles
+        var actual = Attribute.GetCustomAttribute(
+            typeof(ViewAllProfiles),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        
+        //Assert that the AuthorizeAttribute exists and its role is an admin
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor,Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Ensure that the dropdown to select a term exists
+    </summary>
+    */
+    [Fact]
+    public void DropdownToSelectElementIsPresent()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render ViewAllProfiles andd find the select element
+        var component = RenderComponent<ViewAllProfiles>();
+        var selectElement = component.Find("select");
+
+        //Assert that the select element exists
+        Assert.NotNull(selectElement);
+    }
+
+    /**
+    <summary>
+     Ensure that the table has headers for first name, last name, and action
+    </summary>
+    */
+    [Fact]
+    public void TableHasCorrectHeaders()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render ViewAllProfiles and retrive the headers of the table
+        var cut = RenderComponent<ViewAllProfiles>();
+        var headers = cut.FindAll("th").Select(th => th.TextContent.Trim()).ToList();
+
+        //Assert that there are three headers called "First Name", "Last Name", and "Actions"
+        Assert.Equal(3,headers.Count);
+        Assert.Contains("First Name", headers);
+        Assert.Contains("Last Name", headers);
+        Assert.Contains("Actions", headers);
+    }
+
+    /**
+    <summary>
+     Ensure that ViewAllProfiles renders correctly with data
+    </summary>
+    */
+    [Fact]
+    public async Task ViewAllProfilesRendersCorrectlyWithData()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Seed the databse with users, terms, and tutor profiles
+        var user1 = new User { ID = "user1", FirstName = "Alex", LastName = "Lipecky" };
+        var user2 = new User { ID = "user2", FirstName = "Bob", LastName = "Smith" };
+
+        var tutorProfile1 = new TutorProfile
+        {
+            ID = 1,
+            UserID = "user1",
+            Approved = true,
+            Term = new Term
+            {
+                ID = 1,
+                Name = "Fall 2025",
+                StartDate = new DateOnly(2025, 1, 1),
+                EndDate = new DateOnly(2025, 12, 1)
+            }
+        };
+
+        var tutorProfile2 = new TutorProfile
+        {
+            ID = 2,
+            UserID = "user2",
+            Approved = false,
+            Term = new Term
+            {
+                ID = 2,
+                Name = "Spring 2026",
+                StartDate = new DateOnly(2026, 1, 1),
+                EndDate = new DateOnly(2026, 12, 1)
+            }
+        };
+
+        //Add the data to the database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user1);
+            context.Users.Add(user2);
+            await context.SaveChangesAsync();
+
+            context.TutorProfiles.Add(tutorProfile1);
+            context.TutorProfiles.Add(tutorProfile2);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: Render ViewAllProfiles and find the select element
+        var cut = RenderComponent<ViewAllProfiles>();
+        await cut.InvokeAsync(() => { });
+        var selectElement = cut.Find("select");
+
+        //Assert that the select element exists
+        Assert.NotNull(selectElement);
+
+        //Act: retrieve the different options
+        var options = selectElement.QuerySelectorAll("option").ToList();
+
+        //Assert that there are two options (Fall 2025 and Spring 2026 based off the seeded test data)
+        Assert.Equal(2, options.Count);
+        Assert.Contains(options, option => option.TextContent.Contains("Fall 2025"));
+        Assert.Contains(options, option => option.TextContent.Contains("Spring 2026"));
+    }    
+
+    /**
+    <summary>
+     Ensure that ViewAllProfiles displays no profiles when none were created
+    </summary>
+    */
+    [Fact]
+    public async Task ViewAllProfilesWhenNoTutorProfilesCreated()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);  
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Seed the databse with only terms, ensuring no tutor profiles are created
+        var term1 = new Term
+        {
+            ID = 1,
+            Name = "Fall 2025",
+            StartDate = new DateOnly(2025, 1, 1),
+            EndDate = new DateOnly(2025, 12, 1)
+        };
+
+        var term2 = new Term
+        {
+            ID = 2,
+            Name = "Spring 2026",
+            StartDate = new DateOnly(2026, 1, 1),
+            EndDate = new DateOnly(2026, 12, 1)
+        };
+
+        //add data to database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term1);
+            context.Terms.Add(term2);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: Render ViewAllProfiles and find the select element
+        var cut = RenderComponent<ViewAllProfiles>();
+        await cut.InvokeAsync(() => { });
+        var selectElement = cut.Find("select");
+
+        //Assert that the select element exists
+        Assert.NotNull(selectElement);
+
+        //Assert that there are two options (Fall 2025 and Spring 2026 based off the seeded test data)
+        var options = selectElement.QuerySelectorAll("option").ToList();
+        Assert.Equal(2, options.Count);
+
+        //Assert that there is only one row in the table (the headers), ensuring there are no displayed profiles
+        var tableRows = cut.FindAll("tr"); 
+        Assert.Single(tableRows);
+    }
+
+    /**
+    <summary>
+     Ensure that ViewAllProfiles selects the latest term if none are current
+    </summary>
+    */
+    [Fact]
+    public async Task ViewAllProfilesSelectsLatestTermWhenNoCurrentTerms()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Seed the databse with users, terms, and tutor profiles
+        var user1 = new User { ID = "user1", FirstName = "Alex", LastName = "Lipecky" };
+        var user2 = new User { ID = "user2", FirstName = "Bob", LastName = "Smith" };
+
+        var tutorProfile1 = new TutorProfile
+        {
+            ID = 1,
+            UserID = "user1",
+            Approved = true,
+            Term = new Term
+            {
+                ID = 1,
+                Name = "Fall 2025",
+                StartDate = new DateOnly(2025, 1, 1),
+                EndDate = new DateOnly(2025, 2, 1)
+            }
+        };
+
+        var tutorProfile2 = new TutorProfile
+        {
+            ID = 2,
+            UserID = "user2",
+            Approved = false,
+            Term = new Term
+            {
+                ID = 2,
+                Name = "Spring 2022",
+                StartDate = new DateOnly(2022, 1, 1),
+                EndDate = new DateOnly(2022, 12, 1)
+            }
+        };
+
+        //add data to database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user1);
+            context.Users.Add(user2);
+            await context.SaveChangesAsync();
+
+            context.TutorProfiles.Add(tutorProfile1);
+            context.TutorProfiles.Add(tutorProfile2);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: Render ViewAllTutorProfiles, find the select element, and view what option is checked
+        var cut = RenderComponent<ViewAllProfiles>();
+        await cut.InvokeAsync(() => { });
+        var selectElement = cut.Find("select");
+        var selectedOption = selectElement.QuerySelector("option:checked");
+
+        //Assert that the selected option is Fall 2025 (latest term in the test data)
+        Assert.NotNull(selectedOption);
+        Assert.Equal("Fall 2025", selectedOption.TextContent.Trim());
+    }
+
+    /**
+    <summary>
+     Ensure that ViewAllProfiles displays the correct action links
+    </summary>
+    */
+    [Fact]
+    public async Task TableHasCorrectActionLinks()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Seed the databse with user, term, and tutor profile
+        var user1 = new User { ID = "lipeckya@duq.edu", FirstName = "Alex", LastName = "Lipecky" };
+
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Fall 2025",
+            StartDate = new DateOnly(2025, 1, 1),
+            EndDate = new DateOnly(2025, 12, 1)
+        };
+
+        var tutorProfile = new TutorProfile
+        {
+            ID = 1,
+            UserID = "lipeckya@duq.edu",
+            Approved = true,
+            Term = term
+        };
+
+        //add data to database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user1);
+            context.Terms.Add(term);
+            context.TutorProfiles.Add(tutorProfile);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: render the ViewAllProfiles and find the links for details, edit, and remove
+        var cut = RenderComponent<ViewAllProfiles>();
+        var detailsLink = cut.Find($"a[href='/tutor/profile/details?UserID=lipeckya@duq.edu&TermID=1']");
+        //Ensure the link ends with lipeckya@duq.edu as the user
+        var editLink = cut.Find("a[href='/tutor/profile/edit?UserID=lipeckya@duq.edu&TermID=1']");
+        var removeLink = cut.Find($"a[href='/tutor/profile/remove/lipeckya@duq.edu']");
+
+        //Assert that all of the links exist in the table, with correct user
+        Assert.NotNull(detailsLink);
+        Assert.NotNull(editLink);
+        Assert.NotNull(removeLink);
+    }
+
+    /**
+    <summary>
+     Ensure that ViewAllProfiles displays only the profiles in selected term
+    </summary>
+    */
+    [Fact]
+    public async Task ViewAllProfilesDisplaysOnlyProfilesFromSelectedTerm()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Seed the databse with users, terms, and tutor profiles
+        var user1 = new User { ID = "user1", FirstName = "Alex", LastName = "Lipecky" };
+        var user2 = new User { ID = "user2", FirstName = "Bob", LastName = "Smith" };
+        var user3 = new User { ID = "user3", FirstName = "Tom", LastName = "Jones" };
+
+        var Term1 = new Term
+        {
+            ID = 1,
+            Name = "Fall 2025",
+            StartDate = new DateOnly(2025, 1, 1),
+            EndDate = new DateOnly(2025, 12, 1)
+        };
+
+        var Term2 = new Term
+        {
+            ID = 2,
+            Name = "Spring 2026",
+            StartDate = new DateOnly(2026, 1, 1),
+            EndDate = new DateOnly(2026, 12, 1)
+        };
+
+        var tutorProfile1 = new TutorProfile
+        {
+            ID = 1,
+            UserID = "user1",
+            Approved = false,
+            Term = Term1
+        };
+        var tutorProfile2 = new TutorProfile
+        {
+            ID = 2,
+            UserID = "user2",
+            Approved = false,
+            Term = Term2
+        };
+        var tutorProfile3 = new TutorProfile
+        {
+            ID = 3,
+            UserID = "user3",
+            Approved = false,
+            Term = Term1
+        };
+
+        //add data to database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(user1);
+            context.Users.Add(user2);
+            context.Users.Add(user3);
+            await context.SaveChangesAsync();
+
+            context.Terms.Add(Term1);
+            context.Terms.Add(Term2);
+            await context.SaveChangesAsync();
+
+            context.TutorProfiles.Add(tutorProfile1);
+            context.TutorProfiles.Add(tutorProfile2);
+            context.TutorProfiles.Add(tutorProfile3);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: render the ViewAllProfiles and change select to ("1"), which is Fall 2025 term
+        var cut = RenderComponent<ViewAllProfiles>();
+        await cut.InvokeAsync(() => { });
+
+        var selectElement = cut.Find("select");
+        await cut.InvokeAsync(() => selectElement.Change("1"));
+
+        //Act: retrieve what profiles are listed in the Fall 2025 term
+        var displayedNames = cut.FindAll("tr td:nth-child(1)").Select(td => td.TextContent.Trim()).ToList();
+
+        //Assert that only the profiles for Fall 2025 are dispalyed
+        Assert.Equal(2, displayedNames.Count);
+        Assert.Contains("Alex", displayedNames);
+        Assert.Contains("Tom", displayedNames);
+        Assert.DoesNotContain("Bob", displayedNames);
+    }
+
+    /**
+    <summary>
+     Ensure that the "Create Profile" button navigates you to the tutorprofile/create page
+    </summary>
+    */
+    [Fact]
+    public void CreateProfileButtonWorks()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render ViewAllProfiles andd find the select element
+        var component = RenderComponent<ViewAllProfiles>();
+
+        //Act: Find the "Create Profile" button and click it
+        var button = component.Find("button");
+        button.Click();
+
+        //Assert that it navigates you correctly to "/admin/tutorprofile/create"
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.EndsWith("/tutor/profile/create", navManager.Uri);
+    }
+}

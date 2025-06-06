@@ -1,0 +1,122 @@
+@page "/tutor/profile/details/"
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject ILogger<TutorProfileDetails> Logger
+@inject NavigationManager NavigationManager
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Tutor,Admin")]
+
+
+@if(photo != null){
+    <img src="data:image/png;base64,@Convert.ToBase64String(photo)" style="max-width: 100px; border: 1px solid #ccc;" />
+}
+else{
+    <img src="emptyPhoto.png" style="max-width: 100px; border: 1px solid #ccc;" />
+}
+
+<p><b>Tutor Name:</b> @UserFirstName @UserLastName</p>
+<p><b>Term:</b> @TermName</p>
+<p><b>Is Approved?:</b> @IsApproved</p>
+
+<p><b>Courses:</b></p>
+<ul>
+    @foreach (var course in Courses)
+    {
+        <li>@course.Course</li>
+    }
+</ul>
+
+<p><b>Tutor Availability:</b></p>
+<ul>
+    @foreach (var block in RegularScheduleBlocks)
+    {
+        <li>@block.DayOfWeek | @block.StartTime - @block.EndTime</li>
+    }
+</ul>
+
+<p><b>About Me:</b></p>
+<p>@AboutMe</p>
+
+<button type="button" class="btn btn-secondary mt-4" @onclick="Back">Back</button>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string UserID { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int TermID { get; set; }
+
+    private TutorProfile profile;
+
+    private string UserFirstName;
+    private string UserLastName;
+    private string TermName;
+    private string IsApproved;
+
+    #nullable enable
+    private byte[]? photo;
+    #nullable disable
+
+    private List<TutorCourse> Courses = new();
+    private List<TutorScheduleBlock> RegularScheduleBlocks = new();
+    private string AboutMe;
+
+    /// <summary>
+    /// Method <c>OnInitializedAsync</c> Fetches all available Tutor information
+    /// </summary>
+    /// <returns></returns>
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = await DbFactory.CreateDbContextAsync();
+
+            // Load profile
+            profile = await context.TutorProfiles.FirstOrDefaultAsync(p =>
+                p.UserID == UserID && p.TermID == TermID);
+
+            IsApproved = profile.Approved.ToString();
+
+            AboutMe = profile.AboutMe;
+            photo = profile.UserPhoto;
+
+            // Load user data
+            var user = await context.Users.FindAsync(UserID);
+            UserFirstName = user?.FirstName;
+            UserLastName = user?.LastName;
+
+            // Load term data
+            var term = await context.Terms.FindAsync(TermID);
+            TermName = term?.Name;
+
+            // Load courses
+            Courses = await context.TutorCourses
+                .Where(c => c.TutorProfileUserID == UserID && c.TermID == TermID)
+                .ToListAsync();
+
+            // Load schedule
+            RegularScheduleBlocks = await context.TutorScheduleBlocks
+                .Where(b => b.TutorProfileID == profile.ID)
+                .Where(b => b.isActive == true)
+                .ToListAsync();
+            }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to Initialize Data");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+
+    /// <summary>
+    /// Method <c>Back</c> Navigates to Tutor Profile View page
+    /// </summary>
+    public void Back()
+    {
+        try{
+            NavigationManager.NavigateTo("/tutor/profile/");
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Failed to navigate back to View Page");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+}

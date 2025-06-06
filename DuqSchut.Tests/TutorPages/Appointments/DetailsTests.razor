@@ -1,0 +1,50 @@
+@using DuqSchut.Components.Pages.TutorPages.Appointments
+@using System.Security.Claims
+
+@inherits TestContext
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Data
+@using DuqSchut.Models
+@code {
+
+    [Fact]
+    public void OnlyTutorIsAuthorized(){
+        var actual = Attribute.GetCustomAttribute(
+            typeof(Details),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor",actual.Roles);
+
+    }
+    /**
+     <summary>
+        This tests to see if the content of the first h2 tag is Appointments for Details page.
+     </summary>
+    */
+    [Fact]
+    public void TutAppH1ContentIsAppointments()
+    {
+        // Arrange: Create empty DB and render Details component
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetClaims(
+            new Claim("name", "TEST USER"),
+            new Claim("email", "testuser@duq.edu")
+        );
+
+
+        var cut =   // Need a fully qualified name because Index is ambiguous.
+            RenderComponent<DuqSchut.Components.Pages.TutorPages.Appointments.Details>();
+
+        // Assert that content of the title is Upcoming Appointment
+        cut.Find("h1").TextContent.MarkupMatches("Details");
+    }
+
+    
+
+
+
+
+
+}

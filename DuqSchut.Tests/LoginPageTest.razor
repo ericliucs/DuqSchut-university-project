@@ -1,0 +1,136 @@
+@using DuqSchut.Components.Pages.LoginPages
+@inherits TestContext
+@using Microsoft.EntityFrameworkCore
+@using DuqSchut.Data
+@using DuqSchut.Models
+
+@code
+{
+  /**
+   <summary>
+
+    This tests to see if the content of the first h1 tag is Sign into DuqSchut.
+   </summary>
+  */
+  [Fact]
+  public void LoginPageH1ContentIsSignInToDuqSchut()
+  {
+    // Arrange
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<OriginalLogin>();
+
+    // Assert that content of the title is Sign into DuqSchut
+    cut.Find("h1").TextContent.MarkupMatches("Sign into DuqSchut");
+  }
+
+    /**
+    <summary>
+
+    This tests to see if the content of the first label tag is Multipass Username:.
+    </summary>
+    */
+    [Fact]
+    public void LoginPageFirstLabelContentIsMultipassUserName()
+    {
+      // Arrange
+      DBUtils.CreateDB(this);
+      var cut = RenderComponent<OriginalLogin>();
+
+      // Assert that content of the label is Multipass Username:
+      cut.Find("label[for=username]").TextContent.MarkupMatches("Multipass Username:");
+    }
+
+    /**
+    <summary>
+
+    This tests to see if the content of the second label tag is Name:.
+    </summary>
+    */
+    [Fact]
+    public void LoginPageSecondLabelContentIsName()
+    {
+      // Arrange
+      DBUtils.CreateDB(this);
+      var cut = RenderComponent<OriginalLogin>();
+
+      // Assert that content of the label is Name:
+      cut.Find("label[for=firstname]").TextContent.MarkupMatches("Name:");
+    }
+
+
+  [Fact]
+  /**
+   <summary>
+    This tests to see if the login button exists.
+   </summary>
+  */
+  public void LoginPageLoginButtonExists()
+  {
+    // Arrange
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<OriginalLogin>();
+
+    // Assert that content of the login button is Login
+    cut.Find("button[class=login-button]").TextContent.MarkupMatches("Login");
+  }
+
+
+  [Fact]
+  /**
+  <summary>
+  Tests if login button navigates correctly admin
+  </summary>
+  */
+  public void loginnavigationWorksAdmin()
+  {
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<OriginalLogin>();
+    //const string ADMIN_EMAIL = "lipeckya@duq.edu";
+    //const string USER_EMAIL = "student@duq.edu";
+    var navMan = Services.GetRequiredService<FakeNavigationManager>();
+
+    //var dbFactory = Services.GetService<IDbContextFactory<DuqSchutContext>>();
+    var dbFactory = Services.GetService<IDbContextFactory<DuqSchutContext>>();
+    Assert.NotNull(dbFactory);
+    var dbContext = dbFactory.CreateDbContext();
+    Assert.NotNull(dbContext);
+    dbContext.Users.Add(new User { ID = "lipeckya@duq.edu", FirstName = "Alex" , LastName = "Lipecky", Role = UserRole.Admin});
+    dbContext.SaveChanges();
+    //test admin first
+    cut.Find("input.username").Change("lipeckya@duq.edu");
+    cut.Find("input.firstname").Change("Alex Lipecky");
+    cut.Find("button.login-button").Click();
+
+    Assert.EndsWith("/NavPage" , navMan.Uri);
+    dbContext.Dispose();
+  }
+ 
+
+  [Fact]
+  /**
+  <summary>
+  Tests if login button navigates correctly user
+  </summary>
+  */
+  public void loginnavigationWorksUser()
+  {
+    
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<OriginalLogin>();
+    //const string ADMIN_EMAIL = "lipeckya@duq.edu";
+    //const string USER_EMAIL = "student@duq.edu";
+    var navMan = Services.GetRequiredService<FakeNavigationManager>();
+
+    //var dbFactory = Services.GetService<IDbContextFactory<DuqSchutContext>>();
+    //var dbContext = dbFactory.CreateDbContext();
+
+    //test admin first
+    cut.Find("input.username").Change("student@duq.edu");
+    cut.Find("input.firstname").Change("Student User");
+    cut.Find("button.login-button").Click();
+
+    Assert.EndsWith("/student/appointments" , navMan.Uri);
+  }
+  
+  
+}

@@ -1,0 +1,63 @@
+@inherits TestContext
+@using DuqSchut.Models
+@using DuqSchut.Components.Shared.TermPages
+
+@code {
+
+    /**
+    <summary>
+     Testing the rendering of the DisplayCourses component when the term has courses.
+    </summary>
+    */
+    [Fact]
+    public void ShouldRenderCoursesWhenCoursesExist()
+    {
+        // Arrange: create a Term with some courses and redner the compoenent with the Term
+        var term = new Term
+        {
+            Courses = new List<TermCourse>
+            {
+                new TermCourse { Course = "Course 1" },
+                new TermCourse { Course = "Course 2" },
+                new TermCourse { Course = "Course 3" }
+            }
+        };
+
+        var courseListComponent = RenderComponent<DisplayCourses>(parameters => parameters.Add(p => p.CurrentTerm, term));
+
+        // Act: get the rendered courses
+        var courseList = courseListComponent.Find("ul");
+        var courseItems = courseListComponent.FindAll("li");
+
+        // Assert: ensure the courses are rendered correctly
+        Assert.NotNull(courseList);
+        Assert.Equal(3, courseItems.Count);
+        Assert.Equal("Course 1", courseItems[0].TextContent.Trim());
+        Assert.Equal("Course 2", courseItems[1].TextContent.Trim());
+        Assert.Equal("Course 3", courseItems[2].TextContent.Trim());
+    }
+
+    /**
+    <summary>
+     Testing the rendering of the DisplayCourses component when the inputted Term has no courses.
+    </summary>
+    */
+    [Fact]
+    public void ShouldRenderNoCoursesMessageWhenNoCoursesExist()
+    {
+        // Arrange: create a Term with no courses and render the component
+        var term = new Term
+        {
+            Courses = new List<TermCourse>()
+        };
+
+        var courseListComponent = RenderComponent<DisplayCourses>(parameters => parameters.Add(p => p.CurrentTerm, term));
+
+        // Act: get the rendered message
+        var noCoursesMessage = courseListComponent.Find("p");
+
+        // Assert: ensure the "No Courses Yet!" message is rendered
+        Assert.NotNull(noCoursesMessage);
+        Assert.Equal("No Courses Yet!", noCoursesMessage.TextContent.Trim());
+    }
+}

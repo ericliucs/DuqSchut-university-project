@@ -1,0 +1,38 @@
+@using DuqSchut.Components.Pages
+@inherits TestContext
+@code
+{
+  [Fact]
+  /**
+   <summary>
+    Sample bUnit test that works with the initial code base. 
+    Modify tests in this file when Home page is modified.
+   </summary>
+  */
+  public void InitialPageH1ContentIsDuqSchut()
+  {
+    DBUtils.CreateDB(this);
+    // Arrange
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<Home>();
+
+    // Assert that content of the first h1 element is Hello World
+    cut.Find("h1").TextContent.MarkupMatches("DuqSchut");
+  }
+
+
+  [Fact]
+  /**
+  <summary>
+  Test to see if login button navigates to login page
+  </summary>
+  */
+  public void ButtonNavigatesToLoginPage()
+  {
+    DBUtils.CreateDB(this);
+    var cut = RenderComponent<Home>();
+    var navMan = Services.GetRequiredService<FakeNavigationManager>();
+    cut.Find("button[id=go-to-login-button]").Click();
+    Assert.EndsWith("/Login" , navMan.Uri);
+  }
+}

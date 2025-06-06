@@ -1,0 +1,143 @@
+@page "/admin/appointments/edit"
+
+@inject IDbContextFactory<DuqSchut.Data.DuqSchutContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ILogger<Edit> Logger
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>Appointment</h2>
+<hr />
+@if (Appointment is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="Appointment" OnValidSubmit="UpdateAppointment" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="Appointment.ID" value="@Appointment.ID" />
+                <div class="mb-3">
+                    <label for="tuteeid" class="form-label">TuteeID:</label>
+                    <InputText id="tuteeid" @bind-Value="Appointment.TuteeID" class="form-control" />
+                    <ValidationMessage For="() => Appointment.TuteeID" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="tutorid" class="form-label">TutorID:</label>
+                    <InputText id="tutorid" @bind-Value="Appointment.TutorID" class="form-control" />
+                    <ValidationMessage For="() => Appointment.TutorID" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="date" class="form-label">Date:</label>
+                    <InputDate id="date" @bind-Value="Appointment.Date" class="form-control" />
+                    <ValidationMessage For="() => Appointment.Date" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="starttime" class="form-label">StartTime:</label>
+                    <InputDate id="starttime" @bind-Value="Appointment.StartTime" class="form-control" />
+                    <ValidationMessage For="() => Appointment.StartTime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="endtime" class="form-label">EndTime:</label>
+                    <InputDate id="endtime" @bind-Value="Appointment.EndTime" class="form-control" />
+                    <ValidationMessage For="() => Appointment.EndTime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="location" class="form-label">Location:</label>
+                    <InputText id="location" @bind-Value="Appointment.Location" class="form-control" />
+                    <ValidationMessage For="() => Appointment.Location" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="course" class="form-label">Course:</label>
+                    <InputText id="course" @bind-Value="Appointment.Course" class="form-control" />
+                    <ValidationMessage For="() => Appointment.Course" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="purpose" class="form-label">Purpose:</label>
+                    <InputText id="purpose" @bind-Value="Appointment.Purpose" class="form-control" />
+                    <ValidationMessage For="() => Appointment.Purpose" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="termid" class="form-label">TermID:</label>
+                    <InputNumber id="termid" @bind-Value="Appointment.TermID" class="form-control" />
+                    <ValidationMessage For="() => Appointment.TermID" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/admin/appointments">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int ID { get; set; }
+
+    [SupplyParameterFromForm]
+
+    #nullable enable
+    private Appointment? Appointment { get; set; }
+    #nullable disable
+
+    protected override async Task OnInitializedAsync()
+    {
+        try{
+            using var context = DbFactory.CreateDbContext();
+            Appointment ??= await context.Appointments.FirstOrDefaultAsync(m => m.ID == ID);
+
+            if (Appointment is null)
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+        }
+        catch (Exception e) {
+            Logger.LogError(e, "Unexpected error");
+            NavigationManager.NavigateTo("/Error");
+        }
+    }
+        
+        
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateAppointment()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Appointments.Update(Appointment);
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!AppointmentExists(Appointment!.ID))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/admin/appointments");
+    }
+
+    private bool AppointmentExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Appointments.Any(e => e.ID == id);
+    }
+}

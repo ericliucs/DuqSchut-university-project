@@ -1,0 +1,513 @@
+@using DuqSchut.Components.Pages.StudentPages.Appointments;
+@using System.Security.Claims
+@using System.Collections.Generic
+@using System.Text.Json
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Text.RegularExpressions;
+@using System.Linq;
+@inherits TestContext
+
+@code
+{
+    // This sets up authorization
+    private void SetupAuth()
+    {
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("TEST USER");
+        authContext.SetClaims(
+            new Claim("name", "TEST USER"),
+            new Claim("email", "testuser@duq.edu")
+        );
+    }
+
+
+    // This sets up the database for testing
+    private async void SetupDatabase()
+    {
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        using (var context = dbFactory.CreateDbContext())
+        {
+
+            var user = new User
+            {
+                ID = "testuser@duq.edu",
+                FirstName = "TEST",
+                LastName = "USER",
+                Role = UserRole.Student
+            };
+
+            var tutor = new User
+            {
+                ID = "tutorone@duq.edu",
+                FirstName = "tutor",
+                LastName = "one",
+                Role = UserRole.Tutor
+            };
+
+            var TutProfile = new TutorProfile
+            {
+                UserID = tutor.ID,
+                TermID = 101,
+                Approved = true,
+                Courses = new List<TutorCourse>
+                {
+                    new TutorCourse { TutorProfileUserID = tutor.ID, TermID = 101, Course = "COSC 215" },
+                    new TutorCourse { TutorProfileUserID = tutor.ID, TermID = 101, Course = "COSC 220" }
+                },
+                RegularSchedule = new List<TutorScheduleBlock>
+                {
+                    new TutorScheduleBlock
+                    {
+                        ID = 155,
+                        DayOfWeek = DaysOfWeek.Monday,
+                        StartTime = new TimeOnly(10, 0),
+                        EndTime = new TimeOnly(12, 0),
+                        Location = "College Hall 434",
+                        TutorProfileID = 166
+                    },
+                    new TutorScheduleBlock
+                    {
+                        ID = 233,
+                        DayOfWeek = DaysOfWeek.Wednesday,
+                        StartTime = new TimeOnly(12, 0),
+                        EndTime = new TimeOnly(14, 0),
+                        Location = "College Hall 434",
+                        TutorProfileID = 166
+                    }
+                },
+                Exceptions = new List<DateBlock>
+                {
+                    new DateBlock
+                    {
+                        Date = new DateOnly(2025, 4, 10),
+                        StartTime = new TimeOnly(10, 0),
+                        EndTime = new TimeOnly(12, 0),
+                        TutorProfileID = 167
+                    }
+                }
+            };
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var term = new Term
+            {
+                ID = 101,
+                Name = "Spring 2026",
+                StartDate = new DateOnly(2025, 1, 15),
+                EndDate = today.AddMonths(1), // ensure that today is within term
+                TimeIncrement = TermTimeIncrement.HalfHour,
+                MaxHoursTuteesAllowed = 10.0m,
+                MinTutorWeeklyHours = 5.0m,
+                MaxTutorWeeklyHours = 20.0m,
+                Published = true,
+                Courses = new List<TermCourse>
+                {
+                    new TermCourse { Course = "COSC 215" },
+                    new TermCourse { Course = "COSC 220" }
+                }
+            };
+
+            context.Users.Add(user);
+            context.Users.Add(tutor);
+            context.TutorProfiles.Add(TutProfile);
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }
+
+    }
+
+    // This checks that any user can access the page
+    [Fact]
+    public void AnyUserIsAuthorized()
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(StudentCreateAppointment),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        
+        Assert.NotNull(actual);
+        Assert.Null(actual.Roles);
+    }
+
+    // Test for checking which tutors appear when the course has been selected
+    [Fact]
+    public async Task Filter_Tutors_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+
+        var page = RenderComponent<StudentCreateAppointment>();
+
+        // Select Date
+        //Before DatePicker
+        //var dateInput = page.Find("input[type='date']");
+        //var today = "2025-04-09";
+        //dateInput.Change(today);
+        page.Instance.GetNewAppointment().Date = new DateOnly(2025, 4, 9);
+        await page.InvokeAsync(() => page.Instance.FilterTutors(new ChangeEventArgs { Value = "COSC 215" }));
+
+
+        // Select Course
+        var courseSelect = page.Find("#CourseSelect");
+        courseSelect.Change("COSC 215");
+
+        page.WaitForState(() => page.FindAll("#SelectTutor").Count > 0);
+
+        var tutorOptions = page.Instance.GetTutors();
+
+        Assert.Contains(tutorOptions, t => t.UserID == "tutorone@duq.edu");
+
+    }
+    
+    // Test for determining which tutor has been selected
+    [Fact]
+    public async Task Select_Tutor_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+        
+
+        var page = RenderComponent<StudentCreateAppointment>();
+        
+        page.WaitForState(() => page.FindAll("p").Count > 0);
+
+        // Select Date
+        //Before DatePicker
+        //var dateInput = page.Find("input[type='date']");
+        //var today = "2025-04-09";
+        //dateInput.Change(today);
+        page.Instance.GetNewAppointment().Date = new DateOnly(2025, 4, 9);
+        await page.InvokeAsync(() => page.Instance.FilterTutors(new ChangeEventArgs { Value = "COSC 215" }));
+
+        // Select Course
+        var courseSelect = page.Find("#CourseSelect");
+        courseSelect.Change("COSC 215");
+
+        // Wait for list of tutors to change
+        page.WaitForState(() => page.FindAll("#SelectTutor").Count > 0);
+
+        // Select Tutor
+        var tutorSelect = page.Find("#SelectTutor");
+        tutorSelect.Change("tutorone@duq.edu");
+
+        // Check if the correct email has been added to the page
+        var email = page.FindAll("p").FirstOrDefault(p => p.InnerHtml.Contains("tutorone@duq.edu"));
+        Assert.NotNull(email);
+    }
+
+
+    // Test for determining the end times for a half-hour and hour long appointment
+    [Fact]
+    public async Task Update_Times_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+        
+
+        var page = RenderComponent<StudentCreateAppointment>();
+
+        page.WaitForState(() => page.FindAll("p").Count > 0);
+
+        // Select Date
+        //Before DatePicker
+        //var dateInput = page.Find("input[type='date']");
+        //var today = "2025-04-09";
+        //dateInput.Change(today);
+        page.Instance.GetNewAppointment().Date = new DateOnly(2025, 4, 9);
+        await page.InvokeAsync(() => page.Instance.FilterTutors(new ChangeEventArgs { Value = "COSC 215" }));
+
+        // Select Course
+        var courseSelect = page.Find("#CourseSelect");
+        courseSelect.Change("COSC 215");
+
+        // Wait for list of tutors to change
+        page.WaitForState(() => page.FindAll("#SelectTutor").Count > 0);
+
+        // Simulate selecting a tutor first
+        page.Find("#SelectTutor").Change("tutorone@duq.edu");
+
+        // Then change start time
+        var timeSelect = page.Find("#StartTime");
+        timeSelect.Change("12:00 PM");
+
+
+        //await Task.Delay(100);
+        var newAppointment = page.Instance.GetNewAppointment();
+        Assert.Equal(new TimeOnly(12,00), newAppointment.StartTime);
+
+        // Get end times for a half-hour and hour long appointment
+        var firstEnd = page.Instance.GetFirstEndTime();
+        var secondEnd = page.Instance.GetSecondEndTime();
+
+        Assert.Equal(new TimeOnly(12, 30), firstEnd);
+        Assert.Equal(new TimeOnly(13, 0), secondEnd);
+    }
+
+    
+
+    // Test for clicking the approve button when all appointment information is provided
+    [Fact]
+    public async Task Approve_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = mockNavManager.GetUriWithQueryParameter("ID", "tutorone@duq.edu");
+        mockNavManager.NavigateTo(uri);
+
+        var page = RenderComponent<StudentCreateAppointment>();
+
+        // Select Date
+        //Before DatePicker
+        //var dateInput = page.Find("input[type='date']");
+        //var today = "2025-04-09";
+        //dateInput.Change(today);
+        page.Instance.GetNewAppointment().Date = new DateOnly(2025, 4, 9);
+        await page.InvokeAsync(() => page.Instance.FilterTutors(new ChangeEventArgs { Value = "COSC 215" }));
+
+        // Select Course
+        var courseSelect = page.Find("#CourseSelect");
+        courseSelect.Change("COSC 215");
+
+        // Wait for list of tutors to change
+        page.WaitForState(() => page.FindAll("#SelectTutor").Count > 0);
+
+        // Simulate selecting a tutor first
+        page.Find("#SelectTutor").Change("tutorone@duq.edu");
+
+        // Then change start time
+        var timeSelect = page.Find("#StartTime");
+        timeSelect.Change("12:00 PM");
+
+
+        await Task.Delay(100);
+        var newAppointment = page.Instance.GetNewAppointment();
+        Assert.Equal(new TimeOnly(12,00), newAppointment.StartTime);
+
+        TimeOnly firstEndTime = page.Instance.GetFirstEndTime();
+
+        var endTime = page.Find("#EndTime");
+        endTime.Change(firstEndTime.ToString());
+
+        // Get end times for a half-hour and hour long appointment
+        var firstEnd = page.Instance.GetFirstEndTime();
+        var secondEnd = page.Instance.GetSecondEndTime();
+
+        Assert.Equal(new TimeOnly(12, 30), firstEnd);
+        Assert.Equal(new TimeOnly(13, 0), secondEnd);
+
+        // Fill purpose
+        var textArea = page.Find("textarea");
+        textArea.Change("Need help with calculus");
+
+        // Set location
+        page.Find("#SelectLocation").Change("College Hall 434");
+        
+        await Task.Delay(50);
+
+        // Click approve
+        var button = page.Find("button.Approve");
+        button.Click();
+
+        page.WaitForState(() => page.Find("#ErrorMessages").TextContent == "Approved");
+
+        Assert.EndsWith("/student/appointments", mockNavManager.Uri);
+
+        // Check state
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        using (var context = dbFactory.CreateDbContext())
+        {
+            Assert.Equal(1, context.Appointments.Count());
+            var appointment = await context.Appointments
+                .FindAsync(1);
+
+            Assert.NotNull(appointment);
+            Assert.Equal(new DateOnly(2025,4,9), appointment.Date);
+            Assert.Equal(new TimeOnly(12,0), appointment.StartTime);
+            Assert.Equal(new TimeOnly(12,30), appointment.EndTime);
+            Assert.Equal("Need help with calculus", appointment.Purpose);
+            Assert.Equal("COSC 215", appointment.Course);
+            Assert.Equal("College Hall 434", appointment.Location);
+            Assert.Equal("testuser@duq.edu", appointment.TuteeID);
+            Assert.Equal("tutorone@duq.edu", appointment.TutorID);
+        }
+        
+    }
+
+    // Test for clicking the Submit Button with missing information
+    [Fact]
+    public async Task Approve_With_Missing_Information_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = mockNavManager.GetUriWithQueryParameter("ID", "tutorone@duq.edu");
+        mockNavManager.NavigateTo(uri);
+
+        var page = RenderComponent<StudentCreateAppointment>();
+        
+        await Task.Delay(50);
+
+        // Click approve
+        var button = page.Find("button.Approve");
+        button.Click();
+
+        // Retrieves the error messages from clicking the approve button
+        string errorMessage = page.Instance.GetErrorMessage();
+
+        // Splits the error messages into an array with the <li> element functioning as boundaries
+        var matches = Regex.Matches(errorMessage , "<li.*?>(.*?)</li>");
+        string[] extractedTexts = matches.Cast<Match>().Select(m => m.Groups[1].Value).ToArray();
+
+        // Checks the error messages
+        Assert.Equal("End Time has not been set.",extractedTexts[0]);
+        Assert.Equal("Location has not been set.",extractedTexts[1]);
+        Assert.Equal("Course has not been set.",extractedTexts[2]);
+        Assert.Equal("Purpose has not been provided.",extractedTexts[3]);
+    }
+
+    // Test for clicking the submit button when an overlapping appointment exists in the database
+    [Fact]
+    public async Task Approve_Overlapping_Appointment_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+
+        var dbFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        using (var context = dbFactory.CreateDbContext())
+        {
+            var appointment = new Appointment{
+                ID = 1,
+                TuteeID = "testuser@duq.edu",
+                TutorID = "tutorone@duq.edu",
+                Date = new DateOnly(2025,4,9),
+                StartTime = new TimeOnly(12,00),
+                EndTime = new TimeOnly(13,00),
+                Location = ("College Hall 434"),
+                Course = ("COSC 220"),
+                Purpose = ("Review"),
+                TermID = 101
+            };
+
+            Assert.Equal(new TimeOnly(12,0), appointment.StartTime);
+
+            context.Appointments.Add(appointment);
+            await context.SaveChangesAsync();
+        }
+
+        // Navigation Manager
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = mockNavManager.GetUriWithQueryParameter("ID", "tutorone@duq.edu");
+        mockNavManager.NavigateTo(uri);
+
+        var page = RenderComponent<StudentCreateAppointment>();
+
+        // Select Date
+        //Before DatePicker
+        //var dateInput = page.Find("input[type='date']");
+        //var today = "2025-04-09";
+        //dateInput.Change(today);
+        page.Instance.GetNewAppointment().Date = new DateOnly(2025, 4, 9);
+        await page.InvokeAsync(() => page.Instance.FilterTutors(new ChangeEventArgs { Value = "COSC 215" }));
+
+        // Select Course
+        var courseSelect = page.Find("#CourseSelect");
+        courseSelect.Change("COSC 215");
+
+        // Wait for list of tutors to change
+        page.WaitForState(() => page.FindAll("#SelectTutor").Count > 0);
+
+        // Simulate selecting a tutor first
+        page.Find("#SelectTutor").Change("tutorone@duq.edu");
+
+        // Then change start time
+        var timeSelect = page.Find("#StartTime");
+        timeSelect.Change("12:00 PM");
+
+
+        //await Task.Delay(50);
+        var newAppointment = page.Instance.GetNewAppointment();
+        Assert.Equal(new TimeOnly(12,00), newAppointment.StartTime);
+
+        var firstEndTime = page.Instance.GetFirstEndTime();
+
+        var endTime = page.Find("#EndTime");
+        endTime.Change(page.Instance.GetFirstEndTime());
+
+        // Fill purpose
+        var textArea = page.Find("textarea");
+        textArea.Change("Need help with calculus");
+
+        // Set location
+        page.Find("#SelectLocation").Change("College Hall 434");
+        
+        //await Task.Delay(50);
+
+        // Click approve
+        var button = page.Find("button.Approve");
+        button.Click();
+
+        page.WaitForState(() => page.Find("#ErrorMessages").TextContent.Contains("overlaps"));
+
+        string errorMessage = page.Instance.GetErrorMessage();
+
+        Assert.Equal("<li style=\"color:red\">The appointment overlaps with another made appointment.</li>", errorMessage);
+
+        
+
+        // Check State
+        using (var context = dbFactory.CreateDbContext())
+        {
+            Assert.Equal(1, context.Appointments.Count());
+        }
+        
+    }
+
+    // Test for clicking the cancel button
+    [Fact]
+    public void Cancel_Test()
+    {
+        SetupAuth();
+        DBUtils.CreateDB(this);
+
+        SetupDatabase();
+
+        // Navigation Manager
+        var mockNavManager = Services.GetRequiredService<FakeNavigationManager>();
+        var uri = mockNavManager.GetUriWithQueryParameter("ID", "tutorone@duq.edu");
+        if (string.IsNullOrEmpty(uri))
+        {
+            mockNavManager.NavigateTo(uri);
+        }
+        
+
+        var page = RenderComponent<StudentCreateAppointment>();
+
+        // Finds and clicks the cancel button
+        var anchor = page.Find("a.btn.Reject");
+
+        var href = anchor.GetAttribute("href");
+
+        if (!string.IsNullOrEmpty(href))
+        {
+            mockNavManager.NavigateTo(href);
+        }
+
+        Assert.EndsWith("/student/appointments", mockNavManager.Uri);
+
+    }
+
+}

@@ -1,0 +1,487 @@
+@using Radzen
+@using Radzen.Blazor
+@inject NavigationManager Navigation;
+@inject ILogger<Index> Logger
+
+@page "/student/appointments/StudentCreateAppointment"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<!-- Loads Radzen CSS & JS -->
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css" />
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+
+
+@attribute [Authorize]
+
+
+@if (term == null)
+{
+    <p>No Term Found!</p>
+}
+else
+{
+
+
+
+    <div>
+        <!-- This is used to alert the user about any empty fields -->
+        <div id="ErrorMessages">@(new MarkupString(errorMessage))</div>
+        <h1>Appointment Information</h1>
+        
+
+        <!-- The student provides the course and subject they need help with, as well as the end time of the appointment, here -->
+        <div>
+            <h3>Details</h3>
+            <h4>Date
+                <RadzenDatePicker @bind-Value="@newAppointment.Date" DateFormat="MM/dd/yyyy" TValue="DateOnly" Name="DatePickerDateOnlyType" DateRender="@DateRender"/>
+            </h4>
+            <p><b>Course<b style="color:red">*</b></b></p>
+            <select id="CourseSelect" class="CourseSelect" @onchange="FilterTutors">
+                <option></option>
+                @if (term?.Courses != null)
+                {
+                    @foreach (var course in term.Courses)
+                    {
+                        <option value="@course.Course">@course.Course</option>
+                    }
+                }
+            </select>
+            <p><b>Purpose<b style="color:red">*</b></b></p>
+            <textarea rows="10" cols="50" @bind=newAppointment.Purpose>@newAppointment.Purpose</textarea>
+        </div>
+
+        <!-- This shows tutor information for the appointment -->
+        <div>
+            <p>Tutor: 
+                <select id="SelectTutor" class="SelectTutor" @onchange="SelectTutor">
+                    <option id="tutors"></option>
+                    @if (tutors != null && tutors.Any())
+                    {
+                        @foreach (var tutor in tutors)
+                        {
+                            if (tutor?.User != null)
+                            {
+                                <option id="tutors" value="@tutor.UserID">@tutor.User.FirstName @tutor.User.LastName</option>
+                            }
+                        }
+                    }
+                </select>
+            </p>
+            <p>Time: 
+                <select id="StartTime" class="StartTime" @onchange="UpdateTimes">
+                    <option></option>
+                    @if (startTimes != null && startTimes.Any())
+                    {
+                        @foreach (var times in startTimes)
+                        {
+                            <option>@times</option>
+                        }
+                    }
+                </select> - 
+                <!-- This changes the location for an appointment if there is an exception -->
+                <select id="EndTime" class="EndTime" @onchange="ChangeLocation">
+                    <option></option>
+                    @if (firstEndTime != default)
+                    {
+                        <option>@firstEndTime.ToString()</option>
+                    }
+                    @if (secondEndTime != default)
+                    {
+                        <option>@secondEndTime.ToString()</option>
+                    }
+                </select>
+            </p>
+            <p id="TutorEmail">Email: @(selectedTutor?.User?.ID ?? "")</p> <!-- Null check for selectedTutor.User -->
+            <p>Location<b style="color:red">*</b>: 
+                <select id="SelectLocation" class="SelectLocation" @bind=newAppointment.Location>
+                    <option></option>
+                    <option>@location</option>
+                </select>
+            </p>
+        </div>
+
+        <!-- This approves or rejects appointments -->
+        <div>
+            <p>
+                <button id="Approve" class="btn Approve" @onclick="() => Approve()">Submit</button>
+                <a href="/student/appointments" class="btn Reject">Close</a>
+            </p>
+        </div>
+    </div>
+
+    
+}
+
+
+
+
+@code {
+    public Term term {get; set;}
+    public TutorProfile selectedTutor;
+    public ICollection<TutorProfile> tutors;
+    public User student;
+    public Appointment newAppointment;
+    public List<TimeOnly> startTimes;
+    public TimeOnly firstEndTime;
+    public TimeOnly secondEndTime;
+    public string userID;
+    public string location;
+    public string errorMessage;
+
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+
+    private List<DateOnly> disabledDates;
+
+    [Inject] public IDbContextFactory<DuqSchutContext> DbFactory { get; set; }
+        
+    //Getters used for bUnit testing purposes
+    public Appointment GetNewAppointment(){
+        return newAppointment;
+    }
+
+    public ICollection<TutorProfile> GetTutors() {
+        return tutors;
+    }
+
+    public string GetErrorMessage() {
+        return errorMessage;
+    }
+
+    public TimeOnly GetFirstEndTime(){
+        return firstEndTime;
+    }
+
+    public TimeOnly GetSecondEndTime(){
+        return secondEndTime;
+    }
+
+    public string GetLocation(){
+        return location;
+    }
+
+
+
+    // This finds the initial information for the appointment
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+
+            // Retrieve the userID from authentication state
+            var authState = await authenticationState;
+            ClaimsPrincipal user = authState?.User;
+            userID = user?.FindFirstValue("email");
+            
+
+
+            term = await context.Terms
+                .Include(t => t.Courses)
+                .Include(t => t.Appointments)
+                .Include(t => t.TutorProfiles.Where(tp => tp.Approved))
+                    .ThenInclude(tp => tp.RegularSchedule)
+                .Include(t => t.TutorProfiles.Where(tp => tp.Approved))
+                    .ThenInclude(tp => tp.Exceptions)
+                .Include(t => t.TutorProfiles.Where(tp => tp.Approved))
+                    .ThenInclude(tp => tp.Courses)
+                .Include(t => t.TutorProfiles.Where(tp => tp.Approved))
+                    .ThenInclude(tp => tp.User)
+                        .ThenInclude(u => u.AppointmentsAsTutor)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.StartDate <= DateOnly.FromDateTime(DateTime.Now) && t.EndDate >= DateOnly.FromDateTime(DateTime.Now));
+
+            student = await context.Users
+                .Include(u => u.AppointmentsAsTutee)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.ID == userID);
+
+
+
+
+
+            newAppointment = new Appointment{ Date = DateOnly.FromDateTime(DateTime.Now)};
+
+            
+
+            tutors = term.TutorProfiles;
+
+            disabledDates = RetrieveDisabledDates();
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while initializing");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+    
+
+    /**
+        <summary>
+            This uses the GetDisabledDates method in AppointmentManagementUtils to return a List of Dates with no appointments
+        </summary>
+        <returns> This returns a list of dates with no appointments available </returns>
+    */
+    public List<DateOnly> RetrieveDisabledDates()
+    {
+        try
+        {
+            return AppointmentManagementUtils.GetDisabledDates(term);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while determining disabled dates.");
+            Navigation.NavigateTo($"/Error");
+
+            return new List<DateOnly>();
+        }
+    }
+
+    /**
+        <summary>
+            This uses the RenderDate method in AppointmentManagementUtils to make invalid dates unclickable
+        </summary>
+        <param name="args"> These are the dates displayed on the calendar</param>
+        <returns> This returns a list of dates with no appointments available </returns>
+    */
+    public void DateRender(DateRenderEventArgs args)
+    {
+        try
+        {
+            AppointmentManagementUtils.RenderDate(args, term, disabledDates);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while rendering calendar dates.");
+            Navigation.NavigateTo($"/Error");
+        }
+        
+    }
+
+
+
+
+    /**
+        <summary>
+            This updates the location options for the appointment after a time change. 
+            It evaluates exceptions and the tutor's schedule to determine the correct location.
+        </summary>
+        <returns> This returns the location associated with the appointment</returns>
+    */
+    public string UpdateLocation()
+    {
+        try
+        {
+            return AppointmentManagementUtils.GetUpdatedLocation(student, selectedTutor, newAppointment);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while updating the location options for the appointment.");
+            Navigation.NavigateTo($"/Error");
+        }
+
+        return "";
+    }
+
+    
+    /**
+        <summary>
+            This filters the available tutors based on the selected course.
+            If a previously selected tutor is not available for the new course, it resets the tutor selection and appointment details.
+        </summary>
+        <param name="e">This is the event argument containing the selected course value.</param>
+    */
+    public void FilterTutors(ChangeEventArgs e)
+    {
+        try
+        {
+            newAppointment.Course = e.Value?.ToString();
+            tutors = AppointmentManagementUtils.GetFilteredTutors(term, newAppointment);
+
+            if (selectedTutor != null && !tutors.Contains(selectedTutor))
+            {
+                selectedTutor = null;
+                startTimes = new List<TimeOnly>();
+                newAppointment.StartTime = default(TimeOnly);
+                newAppointment.EndTime = default(TimeOnly);
+                firstEndTime = default(TimeOnly);
+                secondEndTime = default(TimeOnly);
+                location = "";
+                newAppointment.Location = "";
+            }
+
+            //await Task.Delay(50);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while filtering tutors");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+    
+    /**
+        <summary>
+            This determines the tutor selected by the student from the dropdown.
+            It then generates available start times for scheduling an appointment.
+        </summary>
+        <param name="e">The event argument containing the selected tutor's ID.</param>
+    */
+    public void SelectTutor(ChangeEventArgs e)
+    {
+        try
+        {
+            if (e.Value.ToString() != "")
+            {
+                selectedTutor = AppointmentManagementUtils.GetSelectedTutor(term, e.Value?.ToString());
+                startTimes = AppointmentManagementUtils.GetStartTimes(student, selectedTutor, newAppointment);
+            }
+            else
+            {
+                selectedTutor = null;
+                startTimes = new List<TimeOnly>();
+                newAppointment.StartTime = default(TimeOnly);
+                newAppointment.EndTime = default(TimeOnly);
+                firstEndTime = default(TimeOnly);
+                secondEndTime = default(TimeOnly);
+                location = "";
+                newAppointment.Location = "";
+            }
+
+            
+            StateHasChanged(); // This refreshes the page
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while changing the available tutoring times");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+    
+    /**
+        <summary>
+            This updates the start time and calculates possible end times for the appointment based on tutor availability.
+        </summary>
+        <param name="e">This is the event argument containing the selected start time value.</param>
+    */
+    public void UpdateTimes(ChangeEventArgs e)
+    {
+        try
+        {
+            if (e.Value.ToString() != "")
+            {
+                AppointmentManagementUtils.SetAppointmentTimes(newAppointment, e.Value?.ToString(), student, selectedTutor, out firstEndTime, out secondEndTime);
+            }
+            else
+            {
+                newAppointment.StartTime = default(TimeOnly);
+                newAppointment.EndTime = default(TimeOnly);
+                firstEndTime = default(TimeOnly);
+                secondEndTime = default(TimeOnly);
+                location = "";
+                newAppointment.Location = "";
+            }
+            
+
+            //await Task.Delay(50);
+            StateHasChanged(); // This refreshes the page
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while updating appointment times for selection");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+    /**
+        <summary>
+            This updates the location when the appointment's end time is adjusted.
+            It checks whether the new end time is valid within the tutor's schedule.
+        </summary>
+        <param name="e">This is the event argument containing the selected end time.</param>
+    */
+    public void ChangeLocation(ChangeEventArgs e)
+    {
+        try
+        {
+            if (e.Value.ToString() != "")
+            {
+                AppointmentManagementUtils.UpdateEndTime(newAppointment, e.Value?.ToString());
+                location = UpdateLocation();
+            }
+            else
+            {
+                newAppointment.EndTime = default(TimeOnly);
+                firstEndTime = default(TimeOnly);
+                secondEndTime = default(TimeOnly);
+                location = "";
+                newAppointment.Location = "";
+            }
+            
+
+            //await Task.Delay(50);
+            StateHasChanged(); // This refreshes the page
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while changing the location variable");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+
+    /**
+        <summary>
+            This approves the appointment by validating user input for appointment information, ensuring that the appointment does not
+            overlap with existing appointments, and confirming availability within the tutor's schedule.
+            If the appointment passes validation, it is added to the database.
+        </summary>
+        <returns> A task that returns the number of entities added to the database (0 or 1)</returns>
+    */
+    public async Task Approve()
+    {
+        try 
+        {
+            errorMessage = AppointmentManagementUtils.ValidateAppointment(newAppointment, student, selectedTutor);
+
+            if (errorMessage != "")
+            {
+                StateHasChanged();
+                await Task.FromResult(0);
+                return;
+            }
+
+            errorMessage = "Approved";
+            
+
+            newAppointment.TuteeID = student.ID;
+            newAppointment.TutorID = selectedTutor.UserID;
+            newAppointment.TermID = term.ID;
+
+            student.AppointmentsAsTutee.Add(newAppointment);
+            selectedTutor.User.AppointmentsAsTutor.Add(newAppointment);
+            
+            using var context = DbFactory.CreateDbContext();
+
+            context.Appointments.Add(newAppointment);
+            await context.SaveChangesAsync();
+
+            Navigation.NavigateTo($"/student/appointments");
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while updating appointment details");
+            Navigation.NavigateTo($"/Error");
+        }
+        
+    }
+
+}

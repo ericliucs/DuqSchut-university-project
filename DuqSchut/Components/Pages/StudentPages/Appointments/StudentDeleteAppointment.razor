@@ -1,0 +1,130 @@
+@inject NavigationManager Navigation;
+@inject ILogger<Index> Logger
+
+@page "/student/appointments/delete"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@attribute [Authorize]
+
+
+@if (appointment == null)
+{
+    <p>No Appointment Found!</p>
+}
+else if (appointment.TuteeID != userID)
+{
+    <p>Unauthorized: You are not the student for this appointment.</p>
+    <a href="/student/appointments" class="btn Reject">Return to Appointments</a>
+}
+else
+{
+    @if(appointment.Date > DateOnly.FromDateTime(DateTime.Now) || appointment.Date == DateOnly.FromDateTime(DateTime.Now) && appointment.StartTime > TimeOnly.FromDateTime(DateTime.Now))
+    {
+        <h1><b>Are You Sure You Want to Delete this Appointment?</b></h1>
+    }
+    else
+    {
+        <h1><b>Past Appointments Cannot be Deleted.</b></h1>
+    }
+    
+
+
+    <dl>
+        <dt><b>Appointment Date:</b></dt> <dd>@appointment.Date</dd>
+        <dt><b>Course:</b></dt> <dd>@appointment.Course</dd>
+        <dt><b>Purpose:</b></dt> <dd>@appointment.Purpose</dd>
+        <dt><b>Tutor:</b></dt> <dd>@appointment.Tutor.FirstName @appointment.Tutor.LastName</dd>
+        <dt><b>Start Time:</b></dt> <dd>@appointment.StartTime</dd>
+        <dt><b>End Time:</b></dt> <dd>@appointment.EndTime</dd>
+        <dt><b>Location:</b></dt> <dd>@appointment.Location</dd>
+    </dl>
+
+    @if(appointment.Date > DateOnly.FromDateTime(DateTime.Now) || appointment.Date == DateOnly.FromDateTime(DateTime.Now) && appointment.StartTime > TimeOnly.FromDateTime(DateTime.Now))
+    {
+        <button class="btn Delete" @onclick="() => Delete()">Delete Appointment</button>
+    }
+    <a href="/student/appointments" class="btn Reject">Back</a>
+
+}
+
+@code {
+    [Parameter] public int appointmentId { get; set; }
+    public Appointment appointment;
+    public string userID;
+
+    #nullable enable
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    #nullable disable
+
+    [Inject] public IDbContextFactory<DuqSchutContext> DbFactory { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+
+            // Retrieve the userID from authentication state
+            var authState = await authenticationState;
+            ClaimsPrincipal user = authState?.User;
+            userID = user?.FindFirstValue("email");
+
+            var uri = Navigation.Uri;
+            var query = new Uri(uri).Query;
+            var queryParams = System.Web.HttpUtility.ParseQueryString(query);
+            var appointmentIdParam = queryParams.Get("id");
+
+            if (!int.TryParse(appointmentIdParam, out var appointmentId))
+            {
+                Navigation.NavigateTo("/student/appointments"); // Redirect if ID is invalid
+                return;
+            }
+
+
+            // Retrieve the appointment
+            appointment = await context.Appointments
+                .Include(a => a.Tutor)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.ID == appointmentId);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while initializing");
+            Navigation.NavigateTo($"/Error");
+        }
+    }
+
+
+    /**
+        <summary>
+            This deletes the appointment displayed.
+        </summary>
+        <returns> A task that returns the number of entities that were deleted from the database (1)</returns>
+    */
+    public async Task Delete()
+    {
+        try 
+        {
+            
+            using var context = DbFactory.CreateDbContext();
+
+            context.Appointments.Remove(appointment);
+            await context.SaveChangesAsync();
+
+            Navigation.NavigateTo($"/student/appointments");
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while deleting the appointment.");
+            Navigation.NavigateTo($"/Error");
+        }
+        
+    }
+
+    
+
+}

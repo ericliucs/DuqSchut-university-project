@@ -1,0 +1,188 @@
+@inherits TestContext
+
+@code {
+    // This test was created by Adam Lewis based on previous tests of simliar pages such as the Terms Index test
+
+    // This test covers:
+    //      - Checking that the page is restricted to Admins
+    //      - Verifying the data grid renders correctly with no students
+    //      - Verifying that seeded student data displays correctly
+    //      - Verifying that the edit button correctly directs you to the /admin/students/edit page
+
+
+    /**
+    <summary>
+        Test that the Student Index page is restricted to Admins
+    </summary>
+    */
+    [Fact]
+    public void OnlyAdminIsAuthorized()
+    {
+        var actual = Attribute.GetCustomAttribute(
+            typeof(DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Index),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+
+        Assert.NotNull(actual);
+        Assert.Equal("Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+        Verifies that the RadzenDataGrid renders correctly with no student profiles.
+    </summary>
+    */
+    [Fact]
+    public void OnlyHeadingRowDisplayedWhenDBIsEmpty()
+    {
+        DBUtils.CreateDB(this);
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Index>();
+
+        var rowCount = cut.FindAll("tr").Count;
+        Assert.Equal(2, rowCount); // One for header, one for "No records to display"
+    }
+
+    /**
+    <summary>
+        Verifies that student data displays correctly in the grid when seeded.
+    </summary>
+    */
+    [Fact]
+    public void StudentPageDisplaysCorrectData()
+    {
+        // Arrange
+        DBUtils.CreateDB(this);
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+
+            var currentTerm = new Term 
+            { 
+                ID = 1, 
+                Name = "Spring 2025", 
+                Published = true, 
+                StartDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-10)), 
+                EndDate = DateOnly.FromDateTime(DateTime.Today.AddDays(10))
+            };
+            dbContext.Terms.Add(currentTerm);
+
+            var user1 = new User { ID = "test1@duq.edu", FirstName = "Adam", LastName = "Lewis", Role = UserRole.Student };
+            var user2 = new User { ID = "test2@duq.edu", FirstName = "Bob", LastName = "Smith", Role = UserRole.Student };
+
+            dbContext.Users.AddRange(user1, user2);
+            dbContext.StudentProfile.AddRange(
+                new StudentProfile { ID = 1, UserID = user1.ID, User = user1, TermID = 1, HoursRemaining = 2 },
+                new StudentProfile { ID = 2, UserID = user2.ID, User = user2, TermID = 1, HoursRemaining = 4 }
+            );
+            dbContext.SaveChanges();
+        }
+
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Index>();
+
+        Assert.Contains("Adam", cut.Markup);
+        Assert.Contains("Bob", cut.Markup);
+        Assert.Contains("2.00", cut.Markup);
+        Assert.Contains("4.00", cut.Markup);
+         Assert.Contains("Spring 2025", cut.Markup);
+
+        var rowCount = cut.FindAll("tr").Count;
+        Assert.True(rowCount > 2); // Header + 2 students
+    }
+
+    
+
+    /**
+    <summary>
+        Ensures that clicking the "Edit" button on a student row navigates to the correct edit page.
+    </summary>
+    */
+    [Fact]
+    public void EditButtonNavigatesToCorrectEditPage()
+    {
+        DBUtils.CreateDB(this);
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            var currentTerm = new Term 
+            { 
+                ID = 1, 
+                Name = "Spring 2025", 
+                Published = true, 
+                StartDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-10)), 
+                EndDate = DateOnly.FromDateTime(DateTime.Today.AddDays(10))
+            };
+            dbContext.Terms.Add(currentTerm);
+
+            var user = new User { ID = "test@duq.edu", FirstName = "Adam", LastName = "Lewis", Role = UserRole.Student };
+            var profile = new StudentProfile
+            {
+                ID = 1,
+                UserID = user.ID,
+                User = user,
+                TermID = 1,
+                HoursRemaining = 3
+            };
+
+            dbContext.Users.Add(user);
+            dbContext.StudentProfile.Add(profile);
+            dbContext.SaveChanges();
+        }
+
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Index>();
+
+        var editLink = cut.Find("a[href='/admin/students/edit?id=1']");
+        Assert.NotNull(editLink);
+        Assert.Equal("Edit", editLink.TextContent.Trim());
+        Assert.Equal("/admin/students/edit?id=1", editLink.GetAttribute("href"));
+    }
+
+    /**
+    <summary>
+        Tests the max hours input and the submit button below it.
+    </summary>
+    */
+    [Fact]
+    public void MaxHoursInputAndButton()
+    {
+        DBUtils.CreateDB(this);
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        using (var dbContext = contextFactory.CreateDbContext())
+        {
+            var currentTerm = new Term 
+            { 
+                ID = 1, 
+                Name = "Spring 2025", 
+                Published = true, 
+                StartDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-10)), 
+                EndDate = DateOnly.FromDateTime(DateTime.Today.AddDays(10))
+            };
+            dbContext.Terms.Add(currentTerm);
+
+            var user = new User { ID = "test@duq.edu", FirstName = "Adam", LastName = "Lewis", Role = UserRole.Student };
+            var profile = new StudentProfile
+            {
+                ID = 1,
+                UserID = user.ID,
+                User = user,
+                TermID = 1,
+                HoursRemaining = 3
+            };
+
+            dbContext.Users.Add(user);
+            dbContext.StudentProfile.Add(profile);
+            dbContext.SaveChanges();  
+        }
+        var cut = RenderComponent<DuqSchut.Components.Pages.AdminPages.StudentProfilePages.Index>();
+
+        cut.Find("input#input").Change("5.0");
+        cut.Find("button#button").Click();
+
+        using (var verifyContext = contextFactory.CreateDbContext())
+        {
+            var updatedProfile = verifyContext.StudentProfile.Find(1);
+            Assert.Equal(5.0, updatedProfile?.HoursRemaining);
+        }
+    }
+}

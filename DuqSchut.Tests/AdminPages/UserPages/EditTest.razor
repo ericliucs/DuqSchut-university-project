@@ -1,0 +1,152 @@
+@using DuqSchut.Components.Pages.AdminPages.UserPages
+
+@inherits TestContext
+
+
+@code
+{
+  [Fact]
+  /**
+   <summary>
+      This tests to see if the title for the user edit page renders correctly.
+   </summary>
+  */
+  public void UserEditsTitleContentIsEdit()
+
+  {
+    DBUtils.CreateDB(this);
+    // Arrange
+    var cut = RenderComponent<Edit>();
+
+    // Assert that content of the h1 tag is edit
+    cut.Find("H1").TextContent.MarkupMatches("Edit");
+  }
+    [Fact]
+    /**
+    <summary>
+        This tests to see if the h2 tag for the user edit page renders correctly.
+    </summary>
+    */
+    public void UserEditsH2ContentIsUser()
+
+    {
+      DBUtils.CreateDB(this);
+      // Arrange
+      var cut = RenderComponent<Edit>();
+
+      // Assert that content of the h2 tag is User
+      cut.Find("H2").TextContent.MarkupMatches("User");
+    }
+
+  /**
+   <summary>
+      This test creates a user and adds it to a mock data base. It then renders the edit page
+      and fills in the form to update the user information. The submit button is then clicked 
+      and the test checks to see if the button navigates back to the user page.
+
+      DISCLAIMER: Much of this code came from PR 17 edit and create tests. I also referenced
+      Google gemini for the select menu test.
+   </summary>
+  */
+  [Fact]
+  public async Task TestToSeeIFUserUpdatesProperlyAndNavigatesBackToUserPage(){
+
+      // Arrange: Set up the mock database
+      DBUtils.CreateDB(this);
+      var dbFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+      Assert.NotNull(dbFactory);
+      var context = dbFactory.CreateDbContext();
+      
+      //create new user in moq database
+      var user = new User{
+        ID = "test@duq.edu",
+        FirstName = "Testfirst",
+        LastName = "TestLast",
+        Role = UserRole.Student
+      };
+
+      context.Users.Add(user);
+      await context.SaveChangesAsync();
+
+    // Navigate to the URI for the edit page with the new user ID
+    var navManager = Services.GetRequiredService<FakeNavigationManager>();
+    var uri = navManager.GetUriWithQueryParameter("ID", user.ID.ToString());
+    navManager.NavigateTo(uri);
+
+    // Render component after navigation so that it contains the user info
+    var edit = RenderComponent<Edit>();
+
+    edit.Find("input#firstname").Change("UpdatedFirst");
+    edit.Find("input#lastname").Change("UpdatedLast");
+
+
+    //test all the select options
+    var select = edit.Find("select");
+    select.Change("Student");
+    Assert.Equal("Student", select.GetAttribute("value"));
+    select.Change("Admin");
+    Assert.Equal("Admin", select.GetAttribute("value"));
+    select.Change("Tutor");
+    Assert.Equal("Tutor", select.GetAttribute("value"));
+
+    // Find the submit button and click it
+    var submitButton = edit.Find("button[type='submit']");
+    await submitButton.ClickAsync(new MouseEventArgs());
+    //Assert that submit button navigates back to users
+    Assert.EndsWith("/users", navManager.Uri);
+
+
+    // Assert: Verify that the user was updated in the database
+    // Retrieve a new instance of the database context to check the updated user
+    var newContext = dbFactory.CreateDbContext();
+    var updatedUser= await newContext.Users.FindAsync(user.ID);
+
+    // Assert that the user has been updated
+    Assert.NotNull(updatedUser);
+    Assert.Equal("UpdatedFirst", updatedUser.FirstName);
+    Assert.Equal("UpdatedLast", updatedUser.LastName);
+    Assert.Equal(UserRole.Tutor, updatedUser.Role);
+
+    
+  }
+
+  /**
+   <summary>
+      This test creates a user and does not add it to a mock data base. It then renders the edit page
+      with a user that does not exist and tests to see if it navigates to not found.
+
+      DISCLAIMER: Much of this code came from PR 17 edit and create tests.
+   </summary>
+  */
+
+  [Fact]
+  public void TestToSeeIfUserDoesNotExistInDataBaseSubmitButtonNavigatesToNotFound(){
+
+      // Arrange: Set up the mock database
+      DuqSchut.Tests.DBUtils.CreateDB(this);
+      var dbFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+      Assert.NotNull(dbFactory);
+      var context = dbFactory.CreateDbContext();
+
+      //Create a user that will not be added to the database
+      var user = new User{
+        ID = "test@duq.edu",
+        FirstName = "Testfirst",
+        LastName = "TestLast",
+        Role = UserRole.Student
+      };
+
+    // Navigate to the URI for the edit page with the unadded user ID
+    var navManager = Services.GetRequiredService<FakeNavigationManager>();
+    var uri = navManager.GetUriWithQueryParameter("ID", user.ID);
+    navManager.NavigateTo(uri);
+
+    //render the component with the unadded user
+    var edit = RenderComponent<Edit>();
+
+    //Assert that the system navigates to not found if the user does not exist.
+    Assert.EndsWith("/notfound", navManager.Uri);
+  }
+}

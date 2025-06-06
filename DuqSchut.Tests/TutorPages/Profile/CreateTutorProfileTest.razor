@@ -1,0 +1,785 @@
+@inherits TestContext
+@using DuqSchut.Components.Pages.TutorPages.Profile
+@using System.Security.Claims
+
+@using Microsoft.AspNetCore.Components.Forms
+
+
+@code {
+
+
+    /**
+    <summary>
+     Ensure that only tutors and admins are authorized to access the CreateTutorProfile page
+    </summary>
+    */
+    [Fact]
+    public void TutorsAndAdminsAuthorized()
+    {
+        // Arrange: Retrieve the authorize attribute from CreateTutorProfile
+        var actual = Attribute.GetCustomAttribute(
+            typeof(CreateTutorProfile),
+            typeof(AuthorizeAttribute)) as AuthorizeAttribute;
+        
+        //Assert that the AuthorizeAttribute exists and its role is a tutor or admin
+        Assert.NotNull(actual);
+        Assert.Equal("Tutor,Admin", actual.Roles);
+    }
+
+    /**
+    <summary>
+     Ensure that the tutor profile submit button exists with proper content
+    </summary>
+    */
+    [Fact]
+    public void SubmitProfileButtonExists()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render the CreateTutorProfile component
+        var cut = RenderComponent<CreateTutorProfile>();
+
+        // Assert that submit button exists and content says "Submit For Approval"
+        cut.Find("button[type=submit]").TextContent.MarkupMatches("Submit For Approval");
+    }
+
+    /**
+    <summary>
+     Ensure that CreateTutorProfile's form displays correctly when loaded
+    </summary>
+    */
+    [Fact]
+    public void FormDisplaysCorrectlyWhenLoaded()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render the TutorScheduling component and find the form
+        var cut = RenderComponent<CreateTutorProfile>();
+        var formElement = cut.Find("form");
+
+        //Assert that the form correctly displays the required fields
+        Assert.NotNull(formElement);
+        Assert.Contains("Full Name:", cut.Markup);
+        Assert.Contains("Duq Email:", cut.Markup);
+        Assert.Contains("Select a Term", cut.Markup);
+        Assert.Contains("Select Courses:", cut.Markup);
+        Assert.Contains("About Me:", cut.Markup);
+        Assert.Contains("Select Availability:", cut.Markup);
+    }
+
+    /**
+    <summary>
+     Ensure that the term dropdown renders with the available term options
+    </summary>
+    */
+    [Fact]
+    public async Task TermDropdownRendersCorrectly()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+        
+        //Arrange: Create two test terms and add them into the database
+        var term1 = new Term
+        {
+            ID = 1,
+            Name = "Fall 2025",
+            StartDate = new DateOnly(2025, 1, 1),
+            EndDate = new DateOnly(2025, 12, 1),
+            Published = true
+        };
+
+        var term2 = new Term
+        {
+            ID = 2,
+            Name = "Spring 2026",
+            StartDate = new DateOnly(2026, 1, 1),
+            EndDate = new DateOnly(2026, 12, 1),
+            Published = true
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term1);
+            context.Terms.Add(term2);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: render the CreateTutorProfile and find the termSelect options
+        var cut = RenderComponent<CreateTutorProfile>();
+        var termSelect = cut.Find("select#termSelect");
+        var options = termSelect.Children;
+
+        //Assert that there are three term options (default select term, Fall 2025, and Spring 2026)
+        Assert.Equal(3, options.Length);
+        Assert.Contains(options, option => option.TextContent.Contains("Fall 2025"));
+        Assert.Contains(options, option => option.TextContent.Contains("Spring 2026"));
+    }
+
+    /**
+    <summary>
+     Ensure that the correct course options are displayed based off of selected term. Also ensure adding
+     and deleting courses work properly
+    </summary>
+    */
+    [Fact]
+    public async Task SelectedCoursesDisplayAndCanBeAddedAndRemoved()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Create a term with three different term courses, adding it to database
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Fall 2025",
+            StartDate = new DateOnly(2025, 9, 1),
+            EndDate = new DateOnly(2025, 12, 15),
+            Published = true,
+            Courses = new List<TermCourse>
+            {
+                new TermCourse { TermID = 1, Course = "COSC101" },
+                new TermCourse { TermID = 1, Course = "MATH135" },
+                new TermCourse { TermID = 1, Course = "COSC160" },
+            }
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }
+
+        //Act: Render CreateTutorProfile and select "Fall 2025" term (term ID = 1)
+        var cut = RenderComponent<CreateTutorProfile>();
+        var termSelect = cut.Find("select#termSelect");
+        termSelect.Change("1");
+
+        //Act: Find the courseSelect options
+        var courseSelect = cut.Find("select#courseSelect");
+        var courseOptions = courseSelect.Children;
+
+        //Assert that there are 4 options (3 courses and the default)
+        Assert.Equal(4, courseOptions.Length);
+
+        //Act: Add the COSC101 course
+        courseSelect.Change("COSC101");
+        var addCourseButton = cut.Find("button");
+        addCourseButton.Click();
+
+        //Assert that COSC101 is displayed as a selected course
+        var selectedCoursesDiv = cut.Find("#selectedCourses");
+        Assert.Contains("COSC101", selectedCoursesDiv.TextContent);
+
+        //Act: remove COSC101 by clicking on it
+        var removeButton = cut.Find("span.badge"); 
+        removeButton.Click();
+
+        //Assert that the selected courses no longer contain COSC101
+        Assert.DoesNotContain("COSC101", cut.Find("#selectedCourses").TextContent);
+    }
+
+    /**
+    <summary>
+     Ensure there are no options for the courses to choose when no term is selected
+    </summary>
+    */
+    [Fact]
+    public void CourseDropdownDoesNotRenderOptionsWhenNoTermSelected()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        this.AddTestAuthorization().SetAuthorizing();
+
+        //Act: Render CreateTutorProfile and find course list without selecting term
+        var cut = RenderComponent<CreateTutorProfile>();
+        var termSelectElement = cut.Find("select#termSelect");
+        termSelectElement.Change("0"); 
+        var courseList = cut.FindAll(".course-item");
+        
+        //Assert that the course list is empty
+        Assert.Empty(courseList);
+    }
+
+    /**
+    <summary>
+     Ensure that all valid input adds profile to database and navigates to ViewAllProfile page when submitted
+    </summary>
+    */
+    [Fact]
+    public async Task ValidInputAddsProfileToDatabaseAndNavigatesCorrectly()
+    {
+        // Arrange: Set up the database and authentication
+        DBUtils.CreateDB(this); 
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        // Arrange: Create a user, term, and courses in the database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        var course = new TermCourse { TermID = 1, Course = "COSC160", Term = term };
+        var course2 = new TermCourse { TermID = 1, Course = "MATH101", Term = term };
+
+        var daysOfWeek = new[]
+        {
+            DaysOfWeek.Monday,
+            DaysOfWeek.Tuesday,
+            DaysOfWeek.Wednesday,
+            DaysOfWeek.Thursday,
+            DaysOfWeek.Friday
+        };
+
+        var scheduleBlocks = daysOfWeek.Select(day => new TermScheduleBlock
+        {
+            TermID = 1,
+            DayOfWeek = day,
+            StartTime = new TimeOnly(9, 0),
+            EndTime = new TimeOnly(20, 0)
+        }).ToList();
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(existingUser);
+            context.Terms.Add(term);
+            context.TermCourses.AddRange(course, course2);
+            context.TermScheduleBlocks.AddRange(scheduleBlocks);
+            await context.SaveChangesAsync();
+        }
+
+        // Act: Render the CreateTutorProfile component
+        var cut = RenderComponent<CreateTutorProfile>();
+
+        // Act: Fill out all of the required fields with valid input
+        var aboutMeInput = cut.Find("textarea#aboutMe");  
+        var coursesSelect = cut.Find("select#courseSelect");
+        var termSelect = cut.Find("select#termSelect");
+
+        aboutMeInput.Change("description");
+        termSelect.Change("1"); 
+        coursesSelect.Change("COSC160"); 
+
+        var addCourseButton = cut.Find("button");
+        await cut.InvokeAsync(() => addCourseButton.Click());
+
+        //Simulate clicking Monday 9:30–10:00 and 10:30-11:00
+        var slot = cut.Find("div[data-test-id='slot-0-1']");
+        var slot2 = cut.Find("div[data-test-id='slot-0-3']");
+        slot.MouseDown();
+        slot.MouseDown(); //Click 9:30-10:00 twice to simulate deslecting
+        slot2.MouseDown();
+
+        // Act: Click the submit button
+        await cut.Find("form").SubmitAsync();
+
+        // Assert: Check if TutorProfile was added to the databse with the correct id
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var profile = await context.TutorProfiles.FirstOrDefaultAsync(tp => tp.UserID == "lipeckya@duq.edu");
+            Assert.NotNull(profile);
+        }
+
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        // Assert that the profile submitted successfuuly and redirect you to the ViewTutorProfiles page
+        Assert.EndsWith("tutor/profile/", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Ensure that a tutor can not create 2 profiles for the same term
+    </summary>
+    */
+    [Fact]
+    public async Task DuplicateProfilesAreNotAdded()
+    {
+        // Arrange: Set up the database and authentication
+        DBUtils.CreateDB(this); 
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        // Arrange: Create a user, term, and courses in the database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        var tutorProfile = new TutorProfile
+        {
+            ID = 1,
+            UserID = "lipeckya@duq.edu",
+            TermID = 1,
+            Term = term
+        };
+
+        var course = new TermCourse { TermID = 1, Course = "COSC160", Term = term };
+        var course2 = new TermCourse { TermID = 1, Course = "MATH101", Term = term };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(existingUser);
+            context.Terms.Add(term);
+            context.TermCourses.AddRange(course, course2);
+            context.TutorProfiles.Add(tutorProfile);
+            await context.SaveChangesAsync();
+        }
+
+        // Act: Render the CreateTutorProfile component
+        var cut = RenderComponent<CreateTutorProfile>();
+
+        // Act: Fill out all of the required fields with valid input
+        var aboutMeInput = cut.Find("textarea#aboutMe");  
+        var coursesSelect = cut.Find("select#courseSelect");
+        var termSelect = cut.Find("select#termSelect");
+
+        aboutMeInput.Change("description");
+        termSelect.Change("1"); 
+        coursesSelect.Change("COSC160"); 
+
+        var addCourseButton = cut.Find("button");
+        await cut.InvokeAsync(() => addCourseButton.Click());
+
+        // Act: click the submit button
+        await cut.Find("form").SubmitAsync();
+
+        // Assert that only one profile with the "lipeckya@duq.edu" is in the database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var profiles = await context.TutorProfiles
+                .Where(tp => tp.UserID == "lipeckya@duq.edu")
+                .ToListAsync();
+
+            Assert.Single(profiles);
+        }
+
+        //Assert that it does not successful submit and navigate to the view page
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.DoesNotContain("tutor/tutorprofile/", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Ensure that the profile does not successfully submit when no term is selected
+    </summary>
+    */
+    [Fact]
+    public async Task TutorProfileSubmissionFailsWhenNoTermSelected()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: create a term and user and add it to the database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring 2025",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(existingUser);
+            await context.SaveChangesAsync();
+
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }    
+
+        //Act: Render CreateTutorProfile and find all the required fields
+        var cut = RenderComponent<CreateTutorProfile>();
+        var aboutMeInput = cut.Find("textarea#aboutMe");
+        var coursesSelect = cut.Find("select#courseSelect");
+
+        //Act: Input valid values for everything but the term
+        aboutMeInput.Change("about me about me about me about me about me about me");
+        coursesSelect.Change("COSC160");
+        var addCourseButton = cut.Find("button");
+        await cut.InvokeAsync(() => addCourseButton.Click());
+
+        //Act: Click submit
+        await cut.InvokeAsync(() => cut.Find("form").Submit());
+
+        //Assert that no  profile was added to the database
+        using (var context = contextFactory.CreateDbContext())
+        {
+            //Below code generated by ChatGPT to retrieve user and profile from database
+            var profile = await context.TutorProfiles.FirstOrDefaultAsync(tp => tp.UserID == "lipeckya@duq.edu");
+            Assert.Null(profile);
+        }
+
+        // Assert that the page did not navigate to the ViewTutorProfiles page
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.DoesNotContain("/tutor/profiles/", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Ensure that submitting profile without course displays error
+    </summary>
+    */
+    [Fact]
+    public async Task ProfileSubmissionShowsErrorWhenCourseIsMissing()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Create a term and user, and add it to database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring 2025",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }  
+
+        //Act: Render TutorProfile and find all required fields
+        var cut = RenderComponent<CreateTutorProfile>();
+        var aboutMeInput = cut.Find("textarea#aboutMe");
+        var coursesSelect = cut.Find("select#courseSelect");
+        var termSelect = cut.Find("select#termSelect");
+
+        //Act: Input all valid values except leave email blank
+        aboutMeInput.Change("about me");
+        termSelect.Change("1"); 
+
+        //Act: Click submit
+        await cut.InvokeAsync(() => cut.Find("form").Submit());
+
+        //Assert that the error message "Please select at least one course" is displayed
+        var errorMessage = cut.Find(".validation-message").TextContent;
+        Assert.NotNull(errorMessage);
+        Assert.Contains("Please select at least one course", errorMessage);
+    }
+
+    /**
+    <summary>
+     Ensure that submitting profile without "about me" displays error
+    </summary>
+    */
+    [Fact]
+    public async Task ProfileSubmissionShowsErrorWhenAboutMeIsMissing()
+    {
+        //Arrange: Set up the database and set to authorized
+        DBUtils.CreateDB(this);
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Arrange: Create a term and user, and add it to database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring 2025",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Terms.Add(term);
+            await context.SaveChangesAsync();
+        }  
+
+        //Act: Render TutorProfile and find all required fields
+        var cut = RenderComponent<CreateTutorProfile>();
+        var coursesSelect = cut.Find("select#courseSelect");
+        var termSelect = cut.Find("select#termSelect");
+
+        //Act: Input all valid values except leave about me blank
+        termSelect.Change("1"); 
+        coursesSelect.Change("COSC160"); 
+
+        var addCourseButton = cut.Find("button");
+        await cut.InvokeAsync(() => addCourseButton.Click());
+
+        //Act: Click submit
+        await cut.InvokeAsync(() => cut.Find("form").Submit());
+
+        //Assert that the error message "Please provide some information about yourself" is displayed
+        var errorMessage = cut.Find(".validation-message").TextContent;
+        Assert.NotNull(errorMessage);
+        Assert.Contains("Please provide some information about yourself", errorMessage);
+    }
+
+    /**
+    <summary>
+     Ensure that the selected courses reset if term is switched and you can not submit 
+     until you re-enter courses for new term
+    </summary>
+    */
+    [Fact]
+    public async Task ChangingTermResetsSelectedCourses()
+    {
+        // Arrange: Set up the database and authentication
+        DBUtils.CreateDB(this); 
+        var authContext = this.AddTestAuthorization();
+        authContext.SetClaims(
+            new Claim("name", "Alex Lipecky"),
+            new Claim("email", "lipeckya@duq.edu")
+        );
+        authContext.SetAuthorized("lipeckya@duq.edu");
+
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        // Arrange: Create a user, term, and courses in the database
+        var existingUser = new User
+        {
+            ID = "lipeckya@duq.edu",
+            FirstName = "Alex",
+            LastName = "Lipecky",
+            Role = UserRole.Student, 
+        };
+        var term = new Term
+        {
+            ID = 1,
+            Name = "Spring",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+        var term2 = new Term
+        {
+            ID = 2,
+            Name = "Fall",
+            StartDate = new DateOnly(2025, 1, 9),
+            EndDate = new DateOnly(2025, 5, 7),
+            Published = true
+        };
+
+        var course = new TermCourse { TermID = 1, Course = "COSC160", Term = term };
+        var course2 = new TermCourse { TermID = 1, Course = "MATH101", Term = term };
+
+        var daysOfWeek = new[]
+        {
+            DaysOfWeek.Monday,
+            DaysOfWeek.Tuesday,
+            DaysOfWeek.Wednesday,
+            DaysOfWeek.Thursday,
+            DaysOfWeek.Friday
+        };
+
+        var scheduleBlocks = daysOfWeek.Select(day => new TermScheduleBlock
+        {
+            TermID = 1,
+            DayOfWeek = day,
+            StartTime = new TimeOnly(9, 0),
+            EndTime = new TimeOnly(20, 0)
+        }).ToList();
+
+        using (var context = contextFactory.CreateDbContext())
+        {
+            context.Users.Add(existingUser);
+            context.Terms.Add(term);
+            context.TermCourses.AddRange(course, course2);
+            context.TermScheduleBlocks.AddRange(scheduleBlocks);
+            await context.SaveChangesAsync();
+        }
+
+        // Act: Render the CreateTutorProfile component
+        var cut = RenderComponent<CreateTutorProfile>();
+
+        // Act: Fill out all of the required fields with valid input
+        var aboutMeInput = cut.Find("textarea#aboutMe");  
+        var coursesSelect = cut.Find("select#courseSelect");
+        var termSelect = cut.Find("select#termSelect");
+
+        aboutMeInput.Change("description");
+        termSelect.Change("1"); 
+        coursesSelect.Change("COSC160"); 
+
+        var addCourseButton = cut.Find("button");
+        await cut.InvokeAsync(() => addCourseButton.Click());
+
+        //Act: Change the term after selecting courses
+        termSelect.Change("2");
+
+        // Act: Click the submit button
+        await cut.Find("form").SubmitAsync();
+
+        // Assert: Check that the profile was not successfully submitted and added to databse
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var profile = await context.TutorProfiles.FirstOrDefaultAsync(tp => tp.UserID == "lipeckya@duq.edu");
+            Assert.Null(profile);
+        }
+
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        // Assert that the profile did not naviagte you to view page
+        Assert.DoesNotContain("tutor/profile/", navManager.Uri);
+        var errorMessage = cut.Find(".validation-message").TextContent;
+        //Assert that error message is displayed
+        Assert.NotNull(errorMessage);
+        Assert.Contains("Please select at least one course", errorMessage);
+    }
+
+     /**
+    <summary>
+     Ensure that the cancel button works properly
+    </summary>
+    */
+    [Fact]
+    public void CancelButtonWorks()
+    {
+        //Arrange: Set up the database
+        DBUtils.CreateDB(this);
+        var contextFactory = 
+            Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        //Act: Render CreateTutorProfile
+        var component = RenderComponent<CreateTutorProfile>();
+
+        //Act: Find the "Cancel" button and click it
+        var button = component.Find("button:contains('Cancel')");
+        button.Click();
+
+        //Assert that it navigates you correctly to "/tutor/tutorprofile/view"
+        var navManager = Services.GetRequiredService<FakeNavigationManager>();
+        Assert.EndsWith("/tutor/profile/", navManager.Uri);
+    }
+
+    /**
+    <summary>
+     Ensure that updating the UserPhoto works properly
+    </summary>
+    */
+    [Fact]
+    public async Task SavingPhotoUpdatesTutorProfile()
+    {
+        // Arrange: set up in-memory DB
+        DBUtils.CreateDB(this);
+        var contextFactory = Services.GetRequiredService<IDbContextFactory<DuqSchutContext>>();
+
+        var testBytes = new byte[] { 1, 2, 3, 4 };
+
+        // Create  TutorProfile
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var profile = new TutorProfile
+            {
+                ID = 1,
+                UserID = "tutor@duq.edu",
+                TermID = 1,
+                Approved = true,
+                UserPhoto = null,
+                Courses = [],
+                RegularSchedule = [],
+                Exceptions = []
+            };
+            context.TutorProfiles.Add(profile);
+            await context.SaveChangesAsync();
+        }
+
+        // Act: update UserPhoto
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var profile = await context.TutorProfiles.Where(p => p.ID == 1).SingleAsync();
+            profile.UserPhoto = testBytes;
+            context.TutorProfiles.Update(profile);
+            await context.SaveChangesAsync();
+        }
+
+        // Assert that verify it's saved
+        using (var context = contextFactory.CreateDbContext())
+        {
+            var updated = await context.TutorProfiles.FindAsync(1);
+            Assert.NotNull(updated?.UserPhoto);
+            Assert.Equal(testBytes, updated.UserPhoto);
+        }
+    }
+}
